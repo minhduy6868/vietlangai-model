@@ -2,8 +2,9 @@ import csv
 from dataclasses import dataclass, field
 
 from app.catalog import ethnic_codes, language_by_code
-from app.detect import detect_language
-from app.paths import reviewed_pairs_path
+from app.detect import detect_language, is_cham_script
+from app.nllb import NllbEngine
+from app.paths import default_nllb_base, reviewed_pairs_path
 
 
 class RouteNotReady(Exception):
@@ -58,7 +59,7 @@ def load_glossary() -> Glossary:
         return glossary
     with path.open(encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
-            verified = (row.get("verified") or "true").strip().lower()
+            verified = (row.get("verified") or "").strip().lower()
             if verified not in {"1", "true", "yes"}:
                 continue
             pair = (row["source_lang"].strip(), row["target_lang"].strip())
@@ -83,32 +84,26 @@ def plan_route(source: str, target: str, direct: set[tuple[str, str]]) -> list[t
 
 
 class NeuralEngine:
-    """Optional mT5 or NLLB adapter. The glossary stays in front of it."""
+    """Optional mT5 checkpoint for ethnic <-> vi. The glossary stays in front of it."""
 
-    def __init__(self, kind: str, model_name: str) -> None:
-        self.kind = kind
-        self.name = kind
+    name = "mt5"
+
+    def __init__(self, model_name: str) -> None:
         self.model_name = model_name
         self._bundle = None
 
     def pairs(self) -> set[tuple[str, str]]:
-        if self.kind == "nllb":
-            return {("vi", "en"), ("en", "vi")}
         pairs: set[tuple[str, str]] = set()
         for code in ethnic_codes():
             pairs.add((code, "vi"))
             pairs.add(("vi", code))
         return pairs
 
+    def step_name(self, source: str, target: str) -> str:
+        return self.name
+
     def translate(self, text: str, source: str, target: str) -> str:
         model, tokenizer = self._load()
-        if self.kind == "nllb":
-            languages = language_by_code()
-            tokenizer.src_lang = languages[source]["nllb_code"]
-            inputs = tokenizer(text, return_tensors="pt")
-            forced = tokenizer.convert_tokens_to_ids(languages[target]["nllb_code"])
-            output = model.generate(**inputs, forced_bos_token_id=forced, max_new_tokens=128)
-            return tokenizer.batch_decode(output, skip_special_tokens=True)[0]
         prefixed = f"{source} {target}: {text}"
         inputs = tokenizer(prefixed, return_tensors="pt", truncation=True, max_length=128)
         output = model.generate(**inputs, max_new_tokens=128)
@@ -124,8 +119,11 @@ class NeuralEngine:
         return self._bundle
 
 
+UNREVIEWED_WARNING = "Bản dịch máy cho tiếng dân tộc, chưa được người bản ngữ rà soát."
+
+
 class Translator:
-    def __init__(self, glossary: Glossary, neural: NeuralEngine | None = None) -> None:
+    def __init__(self, glossary: Glossary, neural: NeuralEngine | NllbEngine | None = None) -> None:
         self.glossary = glossary
         self.neural = neural
         self.codes = set(language_by_code())
@@ -150,9 +148,14 @@ class Translator:
         if source not in self.codes or target not in self.codes:
             missing = source if source not in self.codes else target
             raise UnknownLanguage(missing)
+        if any(is_cham_script(char) for char in cleaned):
+            # Every engine here reads Latin script; Akhar Thrah needs its own model.
+            raise RouteNotReady(source, target)
         planned = plan_route(source, target, self.direct_pairs())
         current = cleaned
         steps = []
+        warnings: list[str] = []
+        ethnic = set(ethnic_codes())
         for step_source, step_target in planned:
             hit = self.glossary.translate(current, step_source, step_target)
             if hit is not None:
@@ -160,7 +163,9 @@ class Translator:
                 engine = "glossary"
             elif self.neural is not None and (step_source, step_target) in self.neural.pairs():
                 current = self.neural.translate(current, step_source, step_target)
-                engine = self.neural.name
+                engine = self.neural.step_name(step_source, step_target)
+                if {step_source, step_target} & ethnic and UNREVIEWED_WARNING not in warnings:
+                    warnings.append(UNREVIEWED_WARNING)
             else:
                 raise RouteNotReady(step_source, step_target)
             steps.append(
@@ -182,7 +187,7 @@ class Translator:
             "detected_lang": detected,
             "route": route,
             "engine": "+".join(engines) if engines else "identity",
-            "warnings": [],
+            "warnings": warnings,
             "steps": steps,
         }
 
@@ -193,9 +198,12 @@ def build_translator() -> Translator:
     kind = os.getenv("ML_MT_ENGINE", "glossary")
     neural = None
     if kind == "mt5":
-        neural = NeuralEngine("mt5", os.getenv("ML_MT_MODEL", "google/mt5-small"))
+        neural = NeuralEngine(os.getenv("ML_MT_MODEL") or "google/mt5-small")
     elif kind == "nllb":
-        neural = NeuralEngine("nllb", os.getenv("ML_MT_MODEL", "facebook/nllb-200-distilled-600M"))
+        neural = NllbEngine(
+            os.getenv("ML_MT_MODEL") or default_nllb_base(),
+            os.getenv("ML_MT_ADAPTER") or None,
+        )
     elif kind != "glossary":
         raise ValueError(f"Unknown ML_MT_ENGINE: {kind}")
     return Translator(load_glossary(), neural)

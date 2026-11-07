@@ -1,4 +1,7 @@
+import threading
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from app.catalog import load_catalog
@@ -6,14 +9,18 @@ from app.detect import detect_language
 from app.io_engines import read_text, transcribe
 from app.translate import RouteNotReady, Translator, UnknownLanguage, build_translator
 
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
 app = FastAPI(title="Ngon Sac Viet ML", version="0.1.0")
 _translator: Translator | None = None
+_translator_lock = threading.Lock()
 
 
 def translator() -> Translator:
     global _translator
-    if _translator is None:
-        _translator = build_translator()
+    with _translator_lock:
+        if _translator is None:
+            _translator = build_translator()
     return _translator
 
 
@@ -68,13 +75,23 @@ def translate(body: TranslateIn) -> dict:
         ) from exc
 
 
+async def read_upload(file: UploadFile) -> bytes:
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={"code": "file_too_large", "message": f"Tệp vượt quá {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."},
+        )
+    return data
+
+
 @app.post("/v1/ocr")
 async def ocr(file: UploadFile = File(...)) -> dict:
-    data = await file.read()
-    return read_text(data, file.filename or "image")
+    data = await read_upload(file)
+    return await run_in_threadpool(read_text, data, file.filename or "image")
 
 
 @app.post("/v1/asr")
 async def asr(file: UploadFile = File(...)) -> dict:
-    data = await file.read()
-    return transcribe(data, file.filename or "audio")
+    data = await read_upload(file)
+    return await run_in_threadpool(transcribe, data, file.filename or "audio")

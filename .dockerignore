@@ -1,0 +1,7 @@
+models/
+data/public/
+data/speech/
+reports/
+tests/
+**/__pycache__/
+.env

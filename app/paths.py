@@ -13,6 +13,15 @@ def catalog_path() -> Path:
     raise FileNotFoundError("shared/languages.json")
 
 
+def models_dir() -> Path:
+    return Path(os.environ.get("ML_MODELS_DIR") or Path(__file__).resolve().parents[1] / "models")
+
+
+def default_nllb_base() -> str:
+    local = models_dir() / "nllb-200-distilled-600M"
+    return str(local) if (local / "model.safetensors").is_file() else "facebook/nllb-200-distilled-600M"
+
+
 def reviewed_pairs_path() -> Path:
     override = os.environ.get("REVIEWED_PAIRS")
     if override:
