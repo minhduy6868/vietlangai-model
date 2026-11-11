@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from app.catalog import ethnic_codes, language_by_code
 from app.detect import detect_language, is_cham_script
 from app.nllb import NllbEngine
-from app.paths import default_nllb_base, reviewed_pairs_path
+from app.paths import default_nllb_base, public_pairs_path, reviewed_pairs_path
 
 
 class RouteNotReady(Exception):
@@ -52,19 +52,46 @@ def builtin_glossary() -> Glossary:
     )
 
 
-def load_glossary() -> Glossary:
-    glossary = builtin_glossary()
-    path = reviewed_pairs_path()
+def _add_pair(glossary: Glossary, source_lang: str, target_lang: str, source: str, target: str) -> None:
+    source_lang = source_lang.strip()
+    target_lang = target_lang.strip()
+    source_text = source.strip()
+    target_text = target.strip()
+    if not source_lang or not target_lang or not source_text or not target_text:
+        return
+    pair = (source_lang, target_lang)
+    glossary.pairs.setdefault(pair, {})
+    glossary.pairs[pair][normalize(source_text)] = target_text
+    # Exact-match glossaries are directional; mirror ethnic ↔ vi for lookup both ways.
+    ethnic = set(ethnic_codes())
+    if {source_lang, target_lang} & ethnic and "vi" in {source_lang, target_lang}:
+        reverse = (target_lang, source_lang)
+        glossary.pairs.setdefault(reverse, {})
+        glossary.pairs[reverse][normalize(target_text)] = source_text
+
+
+def _load_pairs_file(glossary: Glossary, path) -> None:
     if not path.is_file():
-        return glossary
+        return
     with path.open(encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
             verified = (row.get("verified") or "").strip().lower()
             if verified not in {"1", "true", "yes"}:
                 continue
-            pair = (row["source_lang"].strip(), row["target_lang"].strip())
-            glossary.pairs.setdefault(pair, {})
-            glossary.pairs[pair][normalize(row["source"])] = row["target"].strip()
+            _add_pair(
+                glossary,
+                row.get("source_lang", ""),
+                row.get("target_lang", ""),
+                row.get("source", ""),
+                row.get("target", ""),
+            )
+
+
+def load_glossary() -> Glossary:
+    """Load builtin, DB-exported reviewed pairs, then verified public bitext."""
+    glossary = builtin_glossary()
+    _load_pairs_file(glossary, reviewed_pairs_path())
+    _load_pairs_file(glossary, public_pairs_path())
     return glossary
 
 
