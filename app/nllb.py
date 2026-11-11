@@ -126,12 +126,21 @@ class NllbEngine:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.float16 if device == "cuda" else torch.float32
             tokenizer = AutoTokenizer.from_pretrained(self.adapter or self.base)
-            model = AutoModelForSeq2SeqLM.from_pretrained(self.base, dtype=dtype)
+            # low_cpu_mem_usage + fp16 on CUDA keeps the 600M weights off the pagefile.
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                self.base,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+            )
             if self.adapter:
                 from peft import PeftModel
 
                 model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
                 model = PeftModel.from_pretrained(model, self.adapter)
-            model.to(device).eval()
+            if device == "cuda":
+                model.to(device)
+            else:
+                model = model.to(device)
+            model.eval()
             self._bundle = (model, tokenizer)
         return self._bundle

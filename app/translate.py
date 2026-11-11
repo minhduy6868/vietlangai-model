@@ -219,6 +219,18 @@ class Translator:
         }
 
 
+def _adapter_ready(path: str | None) -> str | None:
+    """Use the adapter path only when PEFT weights are on disk."""
+    if not path:
+        return None
+    from pathlib import Path
+
+    folder = Path(path)
+    if (folder / "adapter_config.json").is_file():
+        return path
+    return None
+
+
 def build_translator() -> Translator:
     import os
 
@@ -229,7 +241,7 @@ def build_translator() -> Translator:
     elif kind == "nllb":
         neural = NllbEngine(
             os.getenv("ML_MT_MODEL") or default_nllb_base(),
-            os.getenv("ML_MT_ADAPTER") or None,
+            _adapter_ready(os.getenv("ML_MT_ADAPTER") or None),
         )
     elif kind != "glossary":
         raise ValueError(f"Unknown ML_MT_ENGINE: {kind}")
