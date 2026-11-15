@@ -15,6 +15,10 @@ python -m pytest
 
 ## Huấn luyện
 
+Notebook Kaggle đánh giá ByT5 + LoRA cho Tày → Việt nằm tại
+[`notebooks/kaggle/`](notebooks/kaggle/README.md), kèm hướng dẫn chuẩn bị input,
+chạy GPU và đưa báo cáo về dự án.
+
 ```powershell
 python -m pip install -e ".[train]"
 python training/import_public.py      # corpus công khai -> data/public/pairs.csv
