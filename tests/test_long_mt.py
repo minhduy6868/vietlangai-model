@@ -1,0 +1,118 @@
+import ast
+import json
+import zipfile
+from pathlib import Path
+
+from app.nllb import CHUNK_MAX_CHARS, group_sentences
+from app.translate import Glossary, Translator, _adapter_ready
+from scripts.kaggle_auto_train import build_staging, install_bundle
+from training.evaluate import length_bucket, length_ratio, repetition_rate
+from training.finetune_nllb import (
+    balance_by_temperature,
+    synthesize_long_pairs,
+    upsample_long_sentences,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class _EchoEngine:
+    name = "echo"
+
+    def pairs(self):
+        return {("vi", "en"), ("en", "vi")}
+
+    def step_name(self, source, target):
+        return "echo"
+
+    def translate(self, text, source, target):
+        return f"[{text}]"
+
+
+def test_translator_preserves_paragraph_breaks():
+    result = Translator(Glossary(), _EchoEngine()).translate("  Câu một.   Câu hai.\n\n  Đoạn   hai. ", "vi", "en")
+    assert result["text"] == "[Câu một. Câu hai.\n\nĐoạn hai.]"
+
+
+def test_group_sentences_merges_context_within_limit():
+    chunks = group_sentences(["Câu một.", "Câu hai.", "Câu ba rất dài " * 20], max_chars=40)
+    assert chunks[0] == "Câu một. Câu hai."
+    assert len(chunks) == 2
+    assert CHUNK_MAX_CHARS >= 400
+
+
+def test_adapter_ready_supports_peft_and_full_checkpoints(tmp_path: Path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert _adapter_ready(str(empty)) is None
+
+    peft_dir = tmp_path / "peft"
+    peft_dir.mkdir()
+    (peft_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+    assert _adapter_ready(str(peft_dir)) == str(peft_dir)
+
+    meta_only = tmp_path / "meta_only"
+    meta_only.mkdir()
+    (meta_only / "config.json").write_text("{}", encoding="utf-8")
+    assert _adapter_ready(str(meta_only)) is None
+
+    full_dir = tmp_path / "full"
+    full_dir.mkdir()
+    (full_dir / "config.json").write_text("{}", encoding="utf-8")
+    (full_dir / "model.safetensors").write_bytes(b"weights")
+    assert _adapter_ready(str(full_dir)) == str(full_dir)
+
+
+def test_long_sentence_augmentation_helpers():
+    rows = [
+        ("tyz", "vi", "một từ", "one"),
+        ("tyz", "vi", "câu thứ nhất có đủ tám từ trở lên nhé", "câu tiếng Việt thứ nhất dài hơn tám từ"),
+        ("tyz", "vi", "câu thứ hai cũng đủ dài để ghép câu", "câu tiếng Việt thứ hai đủ dài để nối"),
+        ("rad", "vi", "klei dŭm sa dua tlâo pă", "câu Ê Đê mẫu số một khá dài"),
+    ]
+    upsampled = upsample_long_sentences(rows, min_words=8, factor=2)
+    assert len(upsampled) == 7
+
+    synth = synthesize_long_pairs(rows, ratio=1.0, min_words=4, max_sents=2, seed=7)
+    assert len(synth) == 3
+    for src_lang, tgt_lang, src, tgt in synth:
+        assert src_lang == "tyz" and tgt_lang == "vi"
+        assert src.count(".") >= 2 and tgt.count(".") >= 2
+
+    balanced = balance_by_temperature(rows * 3, temperature=2.0, seed=7)
+    assert len(balanced) == len(rows) * 3
+    rad_count = sum(1 for r in balanced if r[0] == "rad")
+    assert rad_count > 3
+
+
+def test_evaluate_long_metrics():
+    assert length_bucket("một hai ba") == "1-7w"
+    assert length_bucket(" ".join(["w"] * 10)) == "8-15w"
+    assert length_bucket(" ".join(["w"] * 16)) == "16+w"
+    assert repetition_rate(["a b c a b c", "a b c d e"]) == 0.5
+    assert length_ratio(["a b c d"], ["x y"]) == 2.0
+
+
+def test_kaggle_notebook_and_auto_installer(tmp_path: Path):
+    nb_path = ROOT / "notebooks" / "kaggle" / "train_nllb_ethnic.ipynb"
+    nb = json.loads(nb_path.read_text(encoding="utf-8"))
+    assert nb["nbformat"] == 4
+    for cell in nb["cells"]:
+        if cell["cell_type"] == "code":
+            ast.parse("".join(cell["source"]))
+
+    staging = tmp_path / "staging"
+    meta_path = build_staging(staging, "demo/ngonsacviet-train-nllb-ethnic", "NvidiaTeslaP100")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["id"] == "demo/ngonsacviet-train-nllb-ethnic"
+    assert meta["machine_shape"] == "NvidiaTeslaP100"
+
+    bundle_zip = tmp_path / "nllb-ethnic-ready.zip"
+    with zipfile.ZipFile(bundle_zip, "w") as zf:
+        zf.writestr("nllb-ethnic/adapter_config.json", '{"peft_type": "LORA"}')
+        zf.writestr("nllb-ethnic/ngonsacviet.json", '{"languages": ["tyz"], "evaluation": {"tyz->vi": {"chrf": 52.1, "copy_chrf": 30.0}}}')
+
+    target = tmp_path / "installed"
+    installed_meta = install_bundle(bundle_zip, target_dir=target)
+    assert installed_meta["languages"] == ["tyz"]
+    assert (target / "adapter_config.json").is_file()

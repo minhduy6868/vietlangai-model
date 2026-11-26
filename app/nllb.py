@@ -1,12 +1,15 @@
 import re
 import threading
 import unicodedata
+from pathlib import Path
 
 from app.checkpoints import METADATA, read_metadata
 from app.textnorm import from_model, to_model
 
-MAX_TOKENS = 200
+MAX_TOKENS = 512
 MAX_CHARS = 400
+CHUNK_MAX_CHARS = 480
+_PARA_BREAK = re.compile(r"\n\s*\n+")
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
 
@@ -27,7 +30,17 @@ INIT_FROM = {
     "cjm_Latn": ("ace_Latn", "zsm_Latn"),
     "hmn_Latn": ("vie_Latn", "eng_Latn"),
 }
-__all__ = ["BASE_TAGS", "INIT_FROM", "METADATA", "NEW_TAGS", "NllbEngine", "read_metadata", "tag_for"]
+__all__ = [
+    "BASE_TAGS",
+    "INIT_FROM",
+    "METADATA",
+    "NEW_TAGS",
+    "NllbEngine",
+    "group_sentences",
+    "read_metadata",
+    "split_sentences",
+    "tag_for",
+]
 
 
 def tag_for(code: str) -> str:
@@ -46,6 +59,28 @@ def split_sentences(text: str) -> list[str]:
         else:
             parts.append(sentence)
     return [part for part in parts if part] or [text]
+
+
+def group_sentences(sentences: list[str], max_chars: int = CHUNK_MAX_CHARS) -> list[str]:
+    """Merge consecutive short sentences up to max_chars so nearby context stays intact."""
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for sent in sentences:
+        s = sent.strip()
+        if not s:
+            continue
+        added = len(s) + (1 if current else 0)
+        if current and current_len + added > max_chars:
+            chunks.append(" ".join(current))
+            current = [s]
+            current_len = len(s)
+        else:
+            current.append(s)
+            current_len += added
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
 
 
 class NllbEngine:
@@ -68,6 +103,7 @@ class NllbEngine:
         self.languages: list[str] = meta.get("languages", [])
         self.evaluation: dict = meta.get("evaluation", {})
         self.gated = gated
+        self._is_peft = bool(self.adapter and (Path(self.adapter) / "adapter_config.json").is_file())
         self._bundle = None
         self._lock = threading.Lock()
 
@@ -87,8 +123,19 @@ class NllbEngine:
         return "nllb-ethnic" if source in NEW_TAGS or target in NEW_TAGS else "nllb"
 
     def translate(self, text: str, source: str, target: str) -> str:
-        sentences = split_sentences(text)
-        return " ".join(self.translate_batch(sentences, source, target))
+        paragraphs = [p for p in _PARA_BREAK.split(text.strip()) if p.strip()] or [text]
+        para_chunks = [group_sentences(split_sentences(p)) for p in paragraphs]
+        flat = [chunk for chunks in para_chunks for chunk in chunks]
+        if not flat:
+            return ""
+        translated = self.translate_batch(flat, source, target)
+        out_paras = []
+        idx = 0
+        for chunks in para_chunks:
+            count = len(chunks)
+            out_paras.append(" ".join(translated[idx : idx + count]))
+            idx += count
+        return "\n\n".join(out_paras)
 
     def translate_batch(self, texts: list[str], source: str, target: str) -> list[str]:
         import torch
@@ -105,10 +152,18 @@ class NllbEngine:
                 max_length=MAX_TOKENS,
             ).to(model.device)
             forced = tokenizer.convert_tokens_to_ids(tag_for(target))
-            budget = min(MAX_TOKENS, 3 * inputs["input_ids"].shape[1] + 10)
-            kwargs = {"forced_bos_token_id": forced, "num_beams": self.beams, "max_new_tokens": budget}
+            budget = min(MAX_TOKENS, max(32, int(2.2 * inputs["input_ids"].shape[1]) + 24))
+            kwargs = {
+                "forced_bos_token_id": forced,
+                "num_beams": self.beams,
+                "max_new_tokens": budget,
+                "length_penalty": 1.1,
+                "no_repeat_ngram_size": 3,
+                "repetition_penalty": 1.1,
+                "early_stopping": True,
+            }
             with torch.inference_mode():
-                if self.adapter and self.step_name(source, target) == "nllb":
+                if self._is_peft and self.step_name(source, target) == "nllb":
                     with model.disable_adapter():
                         output = model.generate(**inputs, **kwargs)
                 else:
@@ -125,18 +180,35 @@ class NllbEngine:
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.float16 if device == "cuda" else torch.float32
-            tokenizer = AutoTokenizer.from_pretrained(self.adapter or self.base)
-            # low_cpu_mem_usage + fp16 on CUDA keeps the 600M weights off the pagefile.
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                self.base,
-                torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+            tok_source = (
+                self.adapter
+                if self.adapter and (Path(self.adapter) / "tokenizer_config.json").is_file()
+                else self.base
             )
-            if self.adapter:
+            tokenizer = AutoTokenizer.from_pretrained(tok_source)
+            # low_cpu_mem_usage + fp16 on CUDA keeps the 600M weights off the pagefile.
+            if self._is_peft:
                 from peft import PeftModel
 
+                model = AutoModelForSeq2SeqLM.from_pretrained(
+                    self.base,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                )
                 model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
                 model = PeftModel.from_pretrained(model, self.adapter)
+            elif self.adapter and (Path(self.adapter) / "config.json").is_file():
+                model = AutoModelForSeq2SeqLM.from_pretrained(
+                    self.adapter,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                )
+            else:
+                model = AutoModelForSeq2SeqLM.from_pretrained(
+                    self.base,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                )
             if device == "cuda":
                 model.to(device)
             else:

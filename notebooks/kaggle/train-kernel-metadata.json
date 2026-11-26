@@ -1,0 +1,21 @@
+{
+  "id": "<KAGGLE_USERNAME>/ngonsacviet-train-nllb-ethnic",
+  "title": "NgonSacViet - Train NLLB Ethnic Long Sentences",
+  "code_file": "train_nllb_ethnic.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [
+    "gpu",
+    "nlp",
+    "translation"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaP100"
+}

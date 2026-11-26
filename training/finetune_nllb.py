@@ -27,10 +27,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "training"))
 
-from app.nllb import BASE_TAGS, INIT_FROM, METADATA, NEW_TAGS, tag_for  # noqa: E402
-from app.paths import default_nllb_base, reviewed_pairs_path  # noqa: E402
-from app.textnorm import clean, to_model  # noqa: E402
-from validate_pairs import validate_pairs  # noqa: E402
+from validate_pairs import validate_pairs
+
+from app.nllb import BASE_TAGS, INIT_FROM, METADATA, NEW_TAGS, tag_for
+from app.paths import default_nllb_base, reviewed_pairs_path
+from app.textnorm import clean, to_model
 
 TRUE = {"1", "true", "yes"}
 
@@ -94,6 +95,103 @@ def cap_per_language(rows, limit: int | None, seed: int):
     for items in grouped.values():
         rng.shuffle(items)
         out.extend(items[:limit])
+    return out
+
+
+def upsample_long_sentences(
+    rows: list[tuple[str, str, str, str]], min_words: int = 8, factor: int = 2
+) -> list[tuple[str, str, str, str]]:
+    """Repeat longer sentence pairs so short dictionary entries do not dominate training."""
+    if factor <= 1:
+        return list(rows)
+    out: list[tuple[str, str, str, str]] = []
+    for row in rows:
+        _, _, src, tgt = row
+        if max(len(src.split()), len(tgt.split())) >= min_words:
+            out.extend([row] * factor)
+        else:
+            out.append(row)
+    return out
+
+
+def _ensure_terminal(text: str) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+    return stripped if stripped[-1] in ".!?…" else f"{stripped}."
+
+
+def synthesize_long_pairs(
+    rows: list[tuple[str, str, str, str]],
+    ratio: float = 0.35,
+    min_words: int = 4,
+    max_sents: int = 4,
+    max_chars: int = 380,
+    seed: int = 13,
+) -> list[tuple[str, str, str, str]]:
+    """Concatenate verified sentences from the same language pair into longer training examples."""
+    if ratio <= 0 or max_sents < 2:
+        return []
+    rng = random.Random(seed)
+    grouped: dict[tuple[str, str], list[tuple[str, str, str, str]]] = {}
+    for row in rows:
+        grouped.setdefault((row[0], row[1]), []).append(row)
+
+    out: list[tuple[str, str, str, str]] = []
+    for (src_lang, tgt_lang), items in sorted(grouped.items()):
+        candidates = [
+            (src, tgt)
+            for _, _, src, tgt in items
+            if len(src.split()) >= min_words and len(tgt.split()) >= min_words
+        ]
+        if len(candidates) < 2:
+            continue
+        target_count = int(len(items) * ratio)
+        upper = min(max_sents, len(candidates))
+        for _ in range(target_count):
+            k = rng.randint(2, upper)
+            picked = rng.sample(candidates, k)
+            src_parts: list[str] = []
+            tgt_parts: list[str] = []
+            for src_seg, tgt_seg in picked:
+                s_seg = _ensure_terminal(src_seg)
+                t_seg = _ensure_terminal(tgt_seg)
+                next_src = " ".join([*src_parts, s_seg])
+                next_tgt = " ".join([*tgt_parts, t_seg])
+                if src_parts and (len(next_src) > max_chars or len(next_tgt) > max_chars):
+                    break
+                src_parts.append(s_seg)
+                tgt_parts.append(t_seg)
+            if len(src_parts) >= 2:
+                out.append((src_lang, tgt_lang, " ".join(src_parts), " ".join(tgt_parts)))
+    return out
+
+
+def balance_by_temperature(
+    rows: list[tuple[str, str, str, str]], temperature: float = 2.0, seed: int = 13
+) -> list[tuple[str, str, str, str]]:
+    """Rebalance multi-language training rows using temperature sampling (N^(1/T))."""
+    if not rows or temperature <= 1.0:
+        return list(rows)
+    grouped: dict[str, list[tuple[str, str, str, str]]] = {}
+    for row in rows:
+        lang = row[0] if row[0] != "vi" else row[1]
+        grouped.setdefault(lang, []).append(row)
+    if len(grouped) <= 1:
+        return list(rows)
+
+    rng = random.Random(seed)
+    total = len(rows)
+    weights = {lang: len(items) ** (1.0 / temperature) for lang, items in grouped.items()}
+    weight_sum = sum(weights.values())
+    out: list[tuple[str, str, str, str]] = []
+    for lang, items in sorted(grouped.items()):
+        target = max(1, round(total * weights[lang] / weight_sum))
+        if target <= len(items):
+            out.extend(rng.sample(items, target))
+        else:
+            out.extend(items)
+            out.extend(rng.choices(items, k=target - len(items)))
     return out
 
 
@@ -164,13 +262,20 @@ def main() -> None:
     parser.add_argument("--no-reviewed", action="store_true", help="Bỏ qua data/reviewed_pairs.csv")
     parser.add_argument("--base", default=default_nllb_base())
     parser.add_argument("--output", type=Path, default=ROOT / "models" / "nllb-ethnic")
-    parser.add_argument("--epochs", type=float, default=3)
-    parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--batch", type=int, default=16, help="Batch hiệu dụng sau khi tích luỹ gradient")
+    parser.add_argument("--epochs", type=float, default=6)
+    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--batch", type=int, default=32, help="Batch hiệu dụng sau khi tích luỹ gradient")
     parser.add_argument("--grad-accum", type=int, default=4)
-    parser.add_argument("--label-smoothing", type=float, default=0.0)
-    parser.add_argument("--max-length", type=int, default=128)
-    parser.add_argument("--rank", type=int, default=32)
+    parser.add_argument("--label-smoothing", type=float, default=0.1)
+    parser.add_argument("--max-length", type=int, default=256)
+    parser.add_argument("--rank", type=int, default=64)
+    parser.add_argument("--concat-ratio", type=float, default=0.35, help="Tỷ lệ mẫu ghép nhiều câu")
+    parser.add_argument("--concat-min-words", type=int, default=4)
+    parser.add_argument("--concat-max-sents", type=int, default=4)
+    parser.add_argument("--long-min-words", type=int, default=8)
+    parser.add_argument("--long-upsample", type=int, default=2)
+    parser.add_argument("--temp", type=float, default=2.0, help="Nhiệt độ cân bằng giữa các ngôn ngữ")
+    parser.add_argument("--grad-checkpoint", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-per-lang", type=int, default=None)
     parser.add_argument("--full", action="store_true", help="Fine-tune toàn bộ, cần GPU từ 16 GB")
     parser.add_argument("--seed", type=int, default=13)
@@ -189,14 +294,33 @@ def main() -> None:
     dev_pairs = read_pairs(paths, "dev", unknown_ok)
     held_out = held_out_sentences(dev_pairs + read_pairs(paths, "test", unknown_ok))
     train_pairs = [row for row in read_pairs(paths, "train", unknown_ok) if not leaks(row, held_out)]
-    train_rows = cap_per_language(both_directions(train_pairs), args.max_per_lang, args.seed)
+    base_train = upsample_long_sentences(train_pairs, args.long_min_words, args.long_upsample)
+    synth_train = synthesize_long_pairs(
+        train_pairs,
+        ratio=args.concat_ratio,
+        min_words=args.concat_min_words,
+        max_sents=args.concat_max_sents,
+        seed=args.seed,
+    )
+    combined = balance_by_temperature(base_train + synth_train, args.temp, args.seed)
+    train_rows = cap_per_language(both_directions(combined), args.max_per_lang, args.seed)
     dev_rows = both_directions(dev_pairs)
     languages = sorted({lang for row in train_rows for lang in row[:2]} & NEW_TAGS.keys())
     counts: dict[str, int] = {}
     for src_lang, tgt_lang, *_ in train_rows:
         key = f"{src_lang}->{tgt_lang}"
         counts[key] = counts.get(key, 0) + 1
-    print({"train": len(train_rows), "dev": len(dev_rows), "languages": languages, "directions": counts})
+    print(
+        {
+            "raw_train": len(train_pairs),
+            "long_upsampled": len(base_train),
+            "synthesized_long": len(synth_train),
+            "final_train": len(train_rows),
+            "dev": len(dev_rows),
+            "languages": languages,
+            "directions": counts,
+        }
+    )
     if args.dry_run:
         return
     if not languages:
@@ -232,6 +356,11 @@ def main() -> None:
         )
         model = get_peft_model(model, config)
         model.print_trainable_parameters()
+    if cuda and args.grad_checkpoint:
+        model.config.use_cache = False
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        if not args.full and hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
     if cuda:
         model.to("cuda")
     check_embedding_scale(model, tokenizer)
@@ -244,26 +373,27 @@ def main() -> None:
     training_args = Seq2SeqTrainingArguments(
         output_dir=str(args.output / "checkpoints"),
         num_train_epochs=args.epochs,
-        learning_rate=args.lr if not args.full else min(args.lr, 1e-4),
+        learning_rate=args.lr if not args.full else min(args.lr, 5e-5),
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         per_device_train_batch_size=per_device,
         per_device_eval_batch_size=per_device,
         gradient_accumulation_steps=args.grad_accum,
+        max_grad_norm=1.0,
         weight_decay=0.01,
         label_smoothing_factor=args.label_smoothing,
         prediction_loss_only=True,
         bf16=bf16,
         fp16=cuda and not bf16,
         group_by_length=True,
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        eval_strategy="epoch" if dev_features else "no",
+        save_strategy="epoch" if dev_features else "no",
         save_total_limit=1,
-        load_best_model_at_end=True,
+        load_best_model_at_end=bool(dev_features),
         metric_for_best_model="eval_loss",
         logging_steps=100,
         report_to=[],
-        dataloader_num_workers=0,
+        dataloader_num_workers=2 if cuda else 0,
         seed=args.seed,
     )
     pad_collator = DataCollatorForSeq2Seq(tokenizer, label_pad_token_id=-100, pad_to_multiple_of=8)
@@ -300,6 +430,10 @@ def main() -> None:
         "directions": counts,
         "train_sources": [p.name for p in paths],
         "epochs": args.epochs,
+        "max_length": args.max_length,
+        "label_smoothing": args.label_smoothing,
+        "concat_ratio": args.concat_ratio,
+        "long_upsample": args.long_upsample,
         "dev_loss": metrics.get("eval_loss"),
         "minutes": round((time.time() - started) / 60, 1),
     }

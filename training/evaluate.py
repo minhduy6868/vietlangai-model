@@ -20,11 +20,43 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "training"))
 
-from app.checkpoints import read_metadata, write_metadata  # noqa: E402
-from app.paths import default_nllb_base  # noqa: E402
-from finetune_nllb import both_directions, read_pairs  # noqa: E402
+from finetune_nllb import both_directions, read_pairs
+
+from app.checkpoints import read_metadata, write_metadata
+from app.paths import default_nllb_base
 
 NAMES = {"tyz": "Tày", "rad": "Ê Đê", "jra": "Jrai", "cjm": "Chăm", "hmn": "H'Mông", "vi": "Việt"}
+BUCKETS = ("1-7w", "8-15w", "16+w")
+
+
+def length_bucket(text: str) -> str:
+    words = len(text.split())
+    if words <= 7:
+        return "1-7w"
+    if words <= 15:
+        return "8-15w"
+    return "16+w"
+
+
+def repetition_rate(hypotheses: list[str], n: int = 3) -> float:
+    """Fraction of outputs containing at least one repeated word n-gram."""
+    if not hypotheses:
+        return 0.0
+    repeated = 0
+    for hyp in hypotheses:
+        words = hyp.casefold().split()
+        if len(words) < n:
+            continue
+        grams = [tuple(words[i : i + n]) for i in range(len(words) - n + 1)]
+        if len(grams) != len(set(grams)):
+            repeated += 1
+    return round(repeated / len(hypotheses), 4)
+
+
+def length_ratio(hypotheses: list[str], references: list[str]) -> float:
+    hyp_words = sum(len(h.split()) for h in hypotheses)
+    ref_words = max(1, sum(len(r.split()) for r in references))
+    return round(hyp_words / ref_words, 3)
 
 
 def score(hypotheses: list[str], references: list[str]) -> dict:
@@ -34,6 +66,32 @@ def score(hypotheses: list[str], references: list[str]) -> dict:
         "chrf": round(sacrebleu.corpus_chrf(hypotheses, [references], word_order=2).score, 2),
         "bleu": round(sacrebleu.corpus_bleu(hypotheses, [references]).score, 2),
     }
+
+
+def score_by_length(sources: list[str], references: list[str], hypotheses: list[str]) -> dict[str, dict]:
+    grouped: dict[str, tuple[list[str], list[str], list[str]]] = {
+        b: ([], [], []) for b in BUCKETS
+    }
+    for src, ref, hyp in zip(sources, references, hypotheses):
+        bucket = length_bucket(src)
+        grouped[bucket][0].append(src)
+        grouped[bucket][1].append(ref)
+        grouped[bucket][2].append(hyp)
+
+    out: dict[str, dict] = {}
+    for bucket in BUCKETS:
+        b_src, b_ref, b_hyp = grouped[bucket]
+        if not b_src:
+            continue
+        m = score(b_hyp, b_ref)
+        c = score(b_src, b_ref)
+        out[bucket] = {
+            "sentences": len(b_src),
+            "chrf": m["chrf"],
+            "bleu": m["bleu"],
+            "copy_chrf": c["chrf"],
+        }
+    return out
 
 
 def main() -> None:
@@ -67,12 +125,16 @@ def main() -> None:
         hypotheses: list[str] = []
         for i in range(0, len(sources), args.batch):
             hypotheses.extend(engine.translate_batch(sources[i : i + args.batch], src_lang, tgt_lang))
+        by_length = score_by_length(sources, references, hypotheses)
         row = {
             "direction": f"{src_lang}->{tgt_lang}",
             "label": f"{NAMES[src_lang]} → {NAMES[tgt_lang]}",
             "sentences": len(items),
             "model": score(hypotheses, references),
             "copy_baseline": score(sources, references),
+            "by_length": by_length,
+            "length_ratio": length_ratio(hypotheses, references),
+            "repetition_rate": repetition_rate(hypotheses),
             "seconds": round(time.time() - started, 1),
             "samples": [
                 {"source": s, "reference": r, "output": h}
@@ -88,6 +150,7 @@ def main() -> None:
             row["direction"]: {
                 "chrf": row["model"]["chrf"],
                 "copy_chrf": row["copy_baseline"]["chrf"],
+                "long_chrf": row["by_length"].get("16+w", {}).get("chrf"),
                 "sentences": row["sentences"],
             }
             for row in results
@@ -104,12 +167,13 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print("\n| Cặp | Số câu test | chrF++ | BLEU | chrF++ chép nguồn |")
-    print("| --- | --- | --- | --- | --- |")
+    print("\n| Cặp | Số câu test | chrF++ | chrF++ (16+w) | BLEU | chép nguồn | Len ratio | Rep3 |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- |")
     for row in results:
+        long_chrf = row["by_length"].get("16+w", {}).get("chrf", "-")
         print(
-            f"| {row['label']} | {row['sentences']} | {row['model']['chrf']} | {row['model']['bleu']} "
-            f"| {row['copy_baseline']['chrf']} |"
+            f"| {row['label']} | {row['sentences']} | {row['model']['chrf']} | {long_chrf} | {row['model']['bleu']} "
+            f"| {row['copy_baseline']['chrf']} | {row['length_ratio']} | {row['repetition_rate']} |"
         )
     print(f"\nĐã ghi {output}")
 

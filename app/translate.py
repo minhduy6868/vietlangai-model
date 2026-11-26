@@ -1,10 +1,14 @@
 import csv
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.catalog import ethnic_codes, language_by_code
 from app.detect import detect_language, is_cham_script
 from app.nllb import NllbEngine
 from app.paths import default_nllb_base, public_pairs_path, reviewed_pairs_path
+
+_PARA_BREAK = re.compile(r"\n\s*\n+")
 
 
 class RouteNotReady(Exception):
@@ -22,6 +26,15 @@ class UnknownLanguage(Exception):
 
 def normalize(text: str) -> str:
     return " ".join(text.casefold().split())
+
+
+def _clean_input(text: str) -> str:
+    paragraphs = []
+    for block in _PARA_BREAK.split(text.strip()):
+        normalized = " ".join(block.split())
+        if normalized:
+            paragraphs.append(normalized)
+    return "\n\n".join(paragraphs)
 
 
 @dataclass
@@ -162,7 +175,7 @@ class Translator:
         return pairs
 
     def translate(self, text: str, source: str, target: str) -> dict:
-        cleaned = " ".join(text.split())
+        cleaned = _clean_input(text)
         if not cleaned:
             raise ValueError("empty")
         detected = None
@@ -220,13 +233,14 @@ class Translator:
 
 
 def _adapter_ready(path: str | None) -> str | None:
-    """Use the adapter path only when PEFT weights are on disk."""
+    """Use the path when PEFT adapter or full seq2seq weights are on disk."""
     if not path:
         return None
-    from pathlib import Path
-
     folder = Path(path)
     if (folder / "adapter_config.json").is_file():
+        return path
+    has_weights = (folder / "model.safetensors").is_file() or (folder / "pytorch_model.bin").is_file()
+    if (folder / "config.json").is_file() and has_weights:
         return path
     return None
 
