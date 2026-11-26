@@ -28,6 +28,43 @@ def load_image(image: bytes):
         raise ImageRejected("Không đọc được tệp ảnh.") from exc
 
 
+def order_ocr_lines(results) -> list[str]:
+    """Group OCR boxes into reading lines using each box's adaptive height."""
+    items = []
+    for box, text, conf in results:
+        cleaned = text.strip()
+        if not cleaned:
+            continue
+        ys = [float(p[1]) for p in box]
+        xs = [float(p[0]) for p in box]
+        y_top, y_bottom = min(ys), max(ys)
+        items.append(((y_top + y_bottom) / 2.0, max(1.0, y_bottom - y_top), min(xs), cleaned))
+    if not items:
+        return []
+    items.sort(key=lambda item: (item[0], item[2]))
+
+    lines: list[list[tuple[float, str]]] = []
+    line_y = items[0][0]
+    line_h = items[0][1]
+    current: list[tuple[float, str]] = []
+    for y_center, height, x_left, text in items:
+        if current and abs(y_center - line_y) > 0.6 * max(line_h, height):
+            current.sort(key=lambda word: word[0])
+            lines.append(current)
+            current = [(x_left, text)]
+            line_y = y_center
+            line_h = height
+        else:
+            count = len(current)
+            line_y = ((line_y * count) + y_center) / (count + 1)
+            line_h = max(line_h, height)
+            current.append((x_left, text))
+    if current:
+        current.sort(key=lambda word: word[0])
+        lines.append(current)
+    return [" ".join(word for _, word in line) for line in lines]
+
+
 class EasyOcrEngine:
     """Server fallback for Latin-script photos when the phone has no on-device OCR.
 
@@ -45,11 +82,12 @@ class EasyOcrEngine:
     def read(self, image) -> tuple[str, float]:
         with self._lock:
             results = self._load().readtext(image, detail=1, paragraph=False)
-        if not results:
+        lines = order_ocr_lines(results)
+        if not lines:
             return "", 0.0
-        lines = sorted(results, key=lambda item: (round(min(p[1] for p in item[0]) / 20), min(p[0] for p in item[0])))
-        text = " ".join(item[1].strip() for item in lines if item[1].strip())
-        confidence = sum(float(item[2]) for item in lines) / len(lines)
+        non_empty = [item for item in results if item[1].strip()]
+        text = " ".join(lines)
+        confidence = sum(float(item[2]) for item in non_empty) / len(non_empty)
         return text, round(confidence, 3)
 
     def _load(self):

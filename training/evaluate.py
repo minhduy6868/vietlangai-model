@@ -151,6 +151,8 @@ def main() -> None:
                 "chrf": row["model"]["chrf"],
                 "copy_chrf": row["copy_baseline"]["chrf"],
                 "long_chrf": row["by_length"].get("16+w", {}).get("chrf"),
+                "length_ratio": row["length_ratio"],
+                "repetition_rate": row["repetition_rate"],
                 "sentences": row["sentences"],
             }
             for row in results

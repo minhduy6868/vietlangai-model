@@ -3,12 +3,14 @@ import json
 import zipfile
 from pathlib import Path
 
-from app.nllb import CHUNK_MAX_CHARS, group_sentences
+from app.nllb import CHUNK_MAX_CHARS, NllbEngine, group_sentences
+from app.ocr import order_ocr_lines
 from app.translate import Glossary, Translator, _adapter_ready
 from scripts.kaggle_auto_train import build_staging, install_bundle
 from training.evaluate import length_bucket, length_ratio, repetition_rate
 from training.finetune_nllb import (
     balance_by_temperature,
+    both_directions,
     synthesize_long_pairs,
     upsample_long_sentences,
 )
@@ -116,3 +118,43 @@ def test_kaggle_notebook_and_auto_installer(tmp_path: Path):
     installed_meta = install_bundle(bundle_zip, target_dir=target)
     assert installed_meta["languages"] == ["tyz"]
     assert (target / "adapter_config.json").is_file()
+
+
+def test_both_directions_preserves_upsampled_rows_when_dedup_false():
+    rows = [("tyz", "vi", "câu dài đủ tám từ trở lên nhé bạn", "câu tiếng Việt tương ứng cũng dài")]
+    upsampled = upsample_long_sentences(rows, min_words=8, factor=2)
+    assert len(both_directions(upsampled, dedup=True)) == 2
+    assert len(both_directions(upsampled, dedup=False)) == 4
+
+
+def test_order_ocr_lines_handles_large_height_and_tilt():
+    def box(x, y, w=40, h=80):
+        return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+
+    results = [
+        (box(200, 120), "sau", 0.9),
+        (box(20, 10), "Dòng", 0.9),
+        (box(20, 130), "Dòng", 0.9),
+        (box(200, 35), "đầu", 0.9),
+    ]
+    assert order_ocr_lines(results) == ["Dòng đầu", "Dòng sau"]
+
+
+def test_nllb_passed_checks_length_and_repetition(tmp_path: Path):
+    from app.checkpoints import write_metadata
+
+    write_metadata(
+        tmp_path,
+        {
+            "languages": ["tyz", "rad"],
+            "evaluation": {
+                "tyz->vi": {"chrf": 45.0, "copy_chrf": 25.0, "length_ratio": 0.95, "repetition_rate": 0.05},
+                "vi->tyz": {"chrf": 45.0, "copy_chrf": 25.0, "length_ratio": 0.40, "repetition_rate": 0.05},
+                "rad->vi": {"chrf": 45.0, "copy_chrf": 25.0, "length_ratio": 1.0, "repetition_rate": 0.30},
+            },
+        },
+    )
+    engine = NllbEngine("unused-base", str(tmp_path))
+    assert engine.passed("tyz", "vi") is True
+    assert engine.passed("vi", "tyz") is False
+    assert engine.passed("rad", "vi") is False

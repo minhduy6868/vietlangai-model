@@ -37,6 +37,7 @@ __all__ = [
     "NEW_TAGS",
     "NllbEngine",
     "group_sentences",
+    "init_new_tag_embeddings",
     "read_metadata",
     "split_sentences",
     "tag_for",
@@ -45,6 +46,21 @@ __all__ = [
 
 def tag_for(code: str) -> str:
     return BASE_TAGS.get(code) or NEW_TAGS[code]
+
+
+def init_new_tag_embeddings(model, tokenizer) -> list[int]:
+    """Initialize new ethnic language tag rows from related NLLB language embeddings."""
+    import torch
+
+    weight = model.get_input_embeddings().weight
+    ids: list[int] = []
+    with torch.no_grad():
+        for tag, sources in INIT_FROM.items():
+            tag_id = tokenizer.convert_tokens_to_ids(tag)
+            source_ids = [tokenizer.convert_tokens_to_ids(s) for s in sources]
+            weight[tag_id] = weight[source_ids].float().mean(dim=0).to(weight.dtype)
+            ids.append(tag_id)
+    return ids
 
 
 def split_sentences(text: str) -> list[str]:
@@ -117,7 +133,13 @@ class NllbEngine:
 
     def passed(self, source: str, target: str) -> bool:
         scores = self.evaluation.get(f"{source}->{target}")
-        return bool(scores) and scores["chrf"] > scores["copy_chrf"]
+        if not scores or scores.get("chrf", 0.0) <= scores.get("copy_chrf", 0.0):
+            return False
+        ratio = scores.get("length_ratio")
+        if ratio is not None and not (0.55 <= ratio <= 1.6):
+            return False
+        rep = scores.get("repetition_rate")
+        return not (rep is not None and rep >= 0.25)
 
     def step_name(self, source: str, target: str) -> str:
         return "nllb-ethnic" if source in NEW_TAGS or target in NEW_TAGS else "nllb"
@@ -196,6 +218,7 @@ class NllbEngine:
                     low_cpu_mem_usage=True,
                 )
                 model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
+                init_new_tag_embeddings(model, tokenizer)
                 model = PeftModel.from_pretrained(model, self.adapter)
             elif self.adapter and (Path(self.adapter) / "config.json").is_file():
                 model = AutoModelForSeq2SeqLM.from_pretrained(

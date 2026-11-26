@@ -42,6 +42,14 @@ def _credential_paths() -> list[Path]:
     ]
 
 
+def _token_paths() -> list[Path]:
+    home = Path.home()
+    return [
+        home / ".kaggle" / "access_token",
+        home / ".config" / "kaggle" / "access_token",
+    ]
+
+
 def resolve_kaggle_username(explicit: str | None = None) -> str | None:
     if explicit and explicit.strip():
         return explicit.strip()
@@ -57,14 +65,27 @@ def resolve_kaggle_username(explicit: str | None = None) -> str | None:
                     return user
             except (OSError, json.JSONDecodeError):
                 continue
+    if has_kaggle_credentials():
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+
+            api = KaggleApi()
+            api.authenticate()
+            user = (api.get_config_value("username") or "").strip()
+            if user:
+                return user
+        except (ImportError, OSError, ValueError, RuntimeError, KeyError):
+            return None
     return None
 
 
 def has_kaggle_credentials() -> bool:
-    if any(p.is_file() for p in _credential_paths()):
+    if any(p.is_file() for p in _credential_paths() + _token_paths()):
+        return True
+    if os.getenv("KAGGLE_API_TOKEN", "").strip():
         return True
     has_user = bool(os.getenv("KAGGLE_USERNAME", "").strip())
-    has_key = bool(os.getenv("KAGGLE_KEY", "").strip() or os.getenv("KAGGLE_API_TOKEN", "").strip())
+    has_key = bool(os.getenv("KAGGLE_KEY", "").strip())
     return has_user and has_key
 
 
@@ -197,8 +218,8 @@ def download_and_install(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tự động train NLLB Việt <-> Dân tộc trên Kaggle GPU")
     parser.add_argument("--username", help="Kaggle username (mặc định đọc từ kaggle.json)")
-    parser.add_argument("--slug", default="ngonsacviet-train-nllb-ethnic")
-    parser.add_argument("--gpu", default="NvidiaTeslaP100", choices=["NvidiaTeslaP100", "NvidiaTeslaT4"])
+    parser.add_argument("--slug", default="ngonsacviet-train-nllb-ethnic-long-sentences")
+    parser.add_argument("--gpu", default="NvidiaTeslaT4", choices=["NvidiaTeslaT4", "NvidiaTeslaP100"])
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--push-only", action="store_true", help="Chỉ đẩy notebook lên Kaggle, không chờ")
     parser.add_argument("--wait-only", action="store_true", help="Chỉ chờ kernel đang chạy và tải về")

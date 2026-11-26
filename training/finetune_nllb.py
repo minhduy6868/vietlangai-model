@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "training"))
 
 from validate_pairs import validate_pairs
 
-from app.nllb import BASE_TAGS, INIT_FROM, METADATA, NEW_TAGS, tag_for
+from app.nllb import BASE_TAGS, METADATA, NEW_TAGS, init_new_tag_embeddings, tag_for
 from app.paths import default_nllb_base, reviewed_pairs_path
 from app.textnorm import clean, to_model
 
@@ -72,14 +72,16 @@ def leaks(row, held_out: set[tuple[str, str]]) -> bool:
     return _key(src_lang, src) in held_out or _key(tgt_lang, tgt) in held_out
 
 
-def both_directions(rows: list[tuple[str, str, str, str]]) -> list[tuple[str, str, str, str]]:
+def both_directions(rows: list[tuple[str, str, str, str]], dedup: bool = True) -> list[tuple[str, str, str, str]]:
     seen = set()
     out = []
     for src_lang, tgt_lang, src, tgt in rows:
         for item in ((src_lang, tgt_lang, src, tgt), (tgt_lang, src_lang, tgt, src)):
-            if item not in seen:
+            if dedup:
+                if item in seen:
+                    continue
                 seen.add(item)
-                out.append(item)
+            out.append(item)
     return out
 
 
@@ -221,8 +223,6 @@ def encode(tokenizer, rows, max_length: int) -> list[dict]:
 
 
 def add_language_tags(tokenizer, model) -> list[int]:
-    import torch
-
     new = [tag for tag in NEW_TAGS.values() if tag not in tokenizer.get_vocab()]
     if new:
         tokenizer.add_special_tokens(
@@ -230,15 +230,7 @@ def add_language_tags(tokenizer, model) -> list[int]:
             replace_additional_special_tokens=False,
         )
     model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
-    weight = model.get_input_embeddings().weight
-    ids = []
-    with torch.no_grad():
-        for tag, sources in INIT_FROM.items():
-            tag_id = tokenizer.convert_tokens_to_ids(tag)
-            source_ids = [tokenizer.convert_tokens_to_ids(s) for s in sources]
-            weight[tag_id] = weight[source_ids].float().mean(dim=0).to(weight.dtype)
-            ids.append(tag_id)
-    return ids
+    return init_new_tag_embeddings(model, tokenizer)
 
 
 def check_embedding_scale(model, tokenizer) -> None:
@@ -293,7 +285,7 @@ def main() -> None:
     unknown_ok = args.allow_unknown_license
     dev_pairs = read_pairs(paths, "dev", unknown_ok)
     held_out = held_out_sentences(dev_pairs + read_pairs(paths, "test", unknown_ok))
-    train_pairs = [row for row in read_pairs(paths, "train", unknown_ok) if not leaks(row, held_out)]
+    train_pairs = list(dict.fromkeys(row for row in read_pairs(paths, "train", unknown_ok) if not leaks(row, held_out)))
     base_train = upsample_long_sentences(train_pairs, args.long_min_words, args.long_upsample)
     synth_train = synthesize_long_pairs(
         train_pairs,
@@ -303,7 +295,7 @@ def main() -> None:
         seed=args.seed,
     )
     combined = balance_by_temperature(base_train + synth_train, args.temp, args.seed)
-    train_rows = cap_per_language(both_directions(combined), args.max_per_lang, args.seed)
+    train_rows = cap_per_language(both_directions(combined, dedup=False), args.max_per_lang, args.seed)
     dev_rows = both_directions(dev_pairs)
     languages = sorted({lang for row in train_rows for lang in row[:2]} & NEW_TAGS.keys())
     counts: dict[str, int] = {}
