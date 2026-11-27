@@ -1,6 +1,6 @@
 {
-  "id": "<KAGGLE_USERNAME>/ngonsacviet-train-nllb-ethnic-long-sentences",
-  "title": "NgonSacViet - Train NLLB Ethnic Long Sentences",
+  "id": "<KAGGLE_USERNAME>/ngonsacviet-nllb-t4",
+  "title": "ngonsacviet-nllb-t4",
   "code_file": "train_nllb_ethnic.ipynb",
   "language": "python",
   "kernel_type": "notebook",
@@ -16,6 +16,5 @@
   "dataset_sources": [],
   "kernel_sources": [],
   "competition_sources": [],
-  "model_sources": [],
-  "machine_shape": "NvidiaTeslaT4"
+  "model_sources": []
 }

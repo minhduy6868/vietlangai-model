@@ -117,7 +117,11 @@ def build_staging(staging_dir: Path, kernel_id: str, gpu: str) -> Path:
     shutil.copy2(NOTEBOOK, staging_dir / NOTEBOOK.name)
     meta = json.loads(TEMPLATE_META.read_text(encoding="utf-8"))
     meta["id"] = kernel_id
-    meta["machine_shape"] = gpu
+    meta["title"] = kernel_id.split("/", 1)[-1]
+    if not gpu or gpu == "auto":
+        meta.pop("machine_shape", None)
+    else:
+        meta["machine_shape"] = gpu
     meta_path = staging_dir / "kernel-metadata.json"
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     return meta_path
@@ -131,10 +135,15 @@ def _run(cmd: list[str]) -> str:
     return output.strip()
 
 
-def push_kernel(kaggle_bin: str, staging_dir: Path) -> None:
+def push_kernel(kaggle_bin: str, staging_dir: Path, gpu: str = "auto") -> None:
     print(f"Đang đẩy notebook lên Kaggle từ {staging_dir}...")
-    out = _run([kaggle_bin, "kernels", "push", "-p", str(staging_dir)])
+    cmd = [kaggle_bin, "kernels", "push", "-p", str(staging_dir)]
+    if gpu and gpu != "auto":
+        cmd += ["--accelerator", gpu]
+    out = _run(cmd)
     print(out)
+    if "kernel push error" in out.lower():
+        raise SystemExit(out)
 
 
 def wait_kernel(kaggle_bin: str, kernel_id: str, poll_seconds: int) -> None:
@@ -218,8 +227,8 @@ def download_and_install(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tự động train NLLB Việt <-> Dân tộc trên Kaggle GPU")
     parser.add_argument("--username", help="Kaggle username (mặc định đọc từ kaggle.json)")
-    parser.add_argument("--slug", default="ngonsacviet-train-nllb-ethnic-long-sentences")
-    parser.add_argument("--gpu", default="NvidiaTeslaT4", choices=["NvidiaTeslaT4", "NvidiaTeslaP100"])
+    parser.add_argument("--slug", default="ngonsacviet-nllb-t4")
+    parser.add_argument("--gpu", default="NvidiaTeslaT4", choices=["NvidiaTeslaT4", "auto", "NvidiaTeslaP100"])
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--push-only", action="store_true", help="Chỉ đẩy notebook lên Kaggle, không chờ")
     parser.add_argument("--wait-only", action="store_true", help="Chỉ chờ kernel đang chạy và tải về")
@@ -251,7 +260,7 @@ def main() -> None:
         with tempfile.TemporaryDirectory(prefix="nsv_stage_") as tmp:
             staging = Path(tmp)
             build_staging(staging, kernel_id, args.gpu)
-            push_kernel(kaggle_bin, staging)
+            push_kernel(kaggle_bin, staging, args.gpu)
 
     if args.push_only:
         print(f"Đã đẩy lên Kaggle: https://www.kaggle.com/code/{kernel_id}")

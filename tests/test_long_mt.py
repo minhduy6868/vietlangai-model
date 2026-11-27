@@ -96,12 +96,15 @@ def test_evaluate_long_metrics():
 
 
 def test_kaggle_notebook_and_auto_installer(tmp_path: Path):
-    nb_path = ROOT / "notebooks" / "kaggle" / "train_nllb_ethnic.ipynb"
-    nb = json.loads(nb_path.read_text(encoding="utf-8"))
-    assert nb["nbformat"] == 4
-    for cell in nb["cells"]:
-        if cell["cell_type"] == "code":
-            ast.parse("".join(cell["source"]))
+    for rel in (
+        Path("notebooks/kaggle/train_nllb_ethnic.ipynb"),
+        Path("notebooks/colab/train_nllb_ethnic_colab.ipynb"),
+    ):
+        nb = json.loads((ROOT / rel).read_text(encoding="utf-8"))
+        assert nb["nbformat"] == 4
+        for cell in nb["cells"]:
+            if cell["cell_type"] == "code":
+                ast.parse("".join(cell["source"]))
 
     staging = tmp_path / "staging"
     meta_path = build_staging(staging, "demo/ngonsacviet-train-nllb-ethnic", "NvidiaTeslaP100")
