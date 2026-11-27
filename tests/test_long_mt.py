@@ -101,6 +101,7 @@ def test_evaluate_long_metrics():
 def test_kaggle_notebook_and_auto_installer(tmp_path: Path):
     for rel in (
         Path("notebooks/kaggle/train_nllb_ethnic.ipynb"),
+        Path("notebooks/kaggle/train_whisper_hmn.ipynb"),
         Path("notebooks/colab/train_nllb_ethnic_colab.ipynb"),
     ):
         nb = json.loads((ROOT / rel).read_text(encoding="utf-8"))
