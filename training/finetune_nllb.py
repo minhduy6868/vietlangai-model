@@ -403,7 +403,7 @@ def main() -> None:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         per_device_train_batch_size=per_device,
-        per_device_eval_batch_size=per_device,
+        per_device_eval_batch_size=max(per_device, 8),
         gradient_accumulation_steps=args.grad_accum,
         max_grad_norm=1.0,
         weight_decay=0.01,

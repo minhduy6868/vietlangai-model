@@ -96,7 +96,7 @@ def main() -> None:
     parser.add_argument("--drive-dir", type=Path, default=None)
     parser.add_argument("--zip-out", type=Path, default=Path("/content/nllb-ethnic-ready.zip"))
     parser.add_argument("--eval-out", type=Path, default=Path("/content/eval_report.json"))
-    parser.add_argument("--epochs", type=float, default=3)
+    parser.add_argument("--epochs", type=float, default=2)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--batch", type=int, default=64)
     parser.add_argument("--grad-accum", type=int, default=16)
@@ -106,9 +106,10 @@ def main() -> None:
     parser.add_argument("--concat-ratio", type=float, default=0.25)
     parser.add_argument("--long-upsample", type=int, default=1)
     parser.add_argument("--temp", type=float, default=2.0)
-    parser.add_argument("--save-steps", type=int, default=250)
+    parser.add_argument("--save-steps", type=int, default=150)
     parser.add_argument("--logging-steps", type=int, default=25)
     parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--grad-checkpoint", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--allow-unknown-license", action="store_true")
@@ -132,6 +133,8 @@ def main() -> None:
         "--logging-steps", str(args.logging_steps),
         "--workers", str(args.workers),
     ]
+    if not args.grad_checkpoint:
+        train_cmd.append("--no-grad-checkpoint")
     if args.resume:
         train_cmd.append("--resume")
     if args.full:
