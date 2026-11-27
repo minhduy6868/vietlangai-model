@@ -110,6 +110,8 @@ def main() -> None:
     parser.add_argument("--logging-steps", type=int, default=25)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--grad-checkpoint", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--eval-beams", type=int, default=4)
+    parser.add_argument("--eval-batch", type=int, default=32)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--allow-unknown-license", action="store_true")
@@ -150,8 +152,8 @@ def main() -> None:
         "--base", args.base,
         "--adapter", str(args.output),
         "--split", "test",
-        "--batch", "32",
-        "--beams", "4",
+        "--batch", str(args.eval_batch),
+        "--beams", str(args.eval_beams),
         "--output", str(args.eval_out),
     ]
     if args.allow_unknown_license:

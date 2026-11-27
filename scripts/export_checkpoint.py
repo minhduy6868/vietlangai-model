@@ -116,6 +116,8 @@ def main() -> None:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--zip-out", type=Path, default=Path("/content/nllb-ethnic-ready.zip"))
     parser.add_argument("--eval-out", type=Path, default=Path("/content/eval_report.json"))
+    parser.add_argument("--eval-beams", type=int, default=4)
+    parser.add_argument("--eval-batch", type=int, default=32)
     parser.add_argument("--drive-dir", type=Path, default=None)
     parser.add_argument("--allow-unknown-license", action="store_true")
     args = parser.parse_args()
@@ -134,9 +136,9 @@ def main() -> None:
             "--split",
             "test",
             "--batch",
-            "32",
+            str(args.eval_batch),
             "--beams",
-            "4",
+            str(args.eval_beams),
             "--output",
             str(args.eval_out),
         ]
