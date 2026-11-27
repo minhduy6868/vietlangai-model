@@ -11,6 +11,7 @@ from training.evaluate import length_bucket, length_ratio, repetition_rate
 from training.finetune_nllb import (
     balance_by_temperature,
     both_directions,
+    latest_checkpoint,
     synthesize_long_pairs,
     upsample_long_sentences,
 )
@@ -161,3 +162,20 @@ def test_nllb_passed_checks_length_and_repetition(tmp_path: Path):
     assert engine.passed("tyz", "vi") is True
     assert engine.passed("vi", "tyz") is False
     assert engine.passed("rad", "vi") is False
+
+
+def test_latest_checkpoint_picks_highest_numeric_step(tmp_path: Path):
+    ckpts = tmp_path / "checkpoints"
+    assert latest_checkpoint(ckpts) is None
+
+    ckpts.mkdir()
+    assert latest_checkpoint(ckpts) is None
+
+    (ckpts / "checkpoint-abc").mkdir()
+    (ckpts / "other").mkdir()
+    assert latest_checkpoint(ckpts) is None
+
+    (ckpts / "checkpoint-500").mkdir()
+    best = ckpts / "checkpoint-1500"
+    best.mkdir()
+    assert latest_checkpoint(ckpts) == best

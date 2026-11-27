@@ -248,6 +248,24 @@ def check_embedding_scale(model, tokenizer) -> None:
         raise SystemExit(f"Embedding scale lệch: {wrapped:.2f} so với {raw * scale:.2f}")
 
 
+def latest_checkpoint(checkpoints_dir: Path) -> Path | None:
+    """Return the checkpoint-<step> subdirectory with the highest numeric step."""
+    if not checkpoints_dir.is_dir():
+        return None
+    best_step = -1
+    best_path: Path | None = None
+    for entry in checkpoints_dir.iterdir():
+        if not entry.is_dir() or not entry.name.startswith("checkpoint-"):
+            continue
+        suffix = entry.name.removeprefix("checkpoint-")
+        if suffix.isdigit():
+            step = int(suffix)
+            if step > best_step:
+                best_step = step
+                best_path = entry
+    return best_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", nargs="*", type=Path, default=[ROOT / "data" / "public" / "pairs.csv"])
@@ -272,6 +290,7 @@ def main() -> None:
     parser.add_argument("--full", action="store_true", help="Fine-tune toàn bộ, cần GPU từ 16 GB")
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--allow-unknown-license", action="store_true")
+    parser.add_argument("--resume", action="store_true", help="Tiếp tục từ checkpoint gần nhất trong output/checkpoints nếu có")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -405,8 +424,11 @@ def main() -> None:
         eval_dataset=dev_features or None,
         data_collator=collate,
     )
+    resume_ckpt = latest_checkpoint(args.output / "checkpoints") if args.resume else None
+    if resume_ckpt:
+        print(f"Tiếp tục huấn luyện từ checkpoint: {resume_ckpt}")
     started = time.time()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=str(resume_ckpt) if resume_ckpt else None)
     metrics = trainer.evaluate() if dev_features else {}
 
     args.output.mkdir(parents=True, exist_ok=True)
