@@ -6,6 +6,7 @@ from pathlib import Path
 from app.nllb import CHUNK_MAX_CHARS, NllbEngine, group_sentences
 from app.ocr import order_ocr_lines
 from app.translate import Glossary, Translator, _adapter_ready
+from scripts.export_checkpoint import pick_best_checkpoint
 from scripts.kaggle_auto_train import build_staging, install_bundle
 from training.evaluate import length_bucket, length_ratio, repetition_rate
 from training.finetune_nllb import (
@@ -193,3 +194,28 @@ def test_has_data_rows_skips_header_only_csv(tmp_path: Path):
         encoding="utf-8",
     )
     assert has_data_rows(with_row) is True
+
+
+def test_pick_best_checkpoint_prefers_trainer_state_best(tmp_path: Path):
+    ckpts = tmp_path / "checkpoints"
+    c300 = ckpts / "checkpoint-300"
+    c450 = ckpts / "checkpoint-450"
+    c300.mkdir(parents=True)
+    c450.mkdir(parents=True)
+    (c450 / "trainer_state.json").write_text(
+        json.dumps(
+            {
+                "best_model_checkpoint": "/content/nllb-ethnic/checkpoints/checkpoint-300",
+                "best_metric": 1.85,
+                "global_step": 450,
+                "epoch": 0.36,
+            }
+        ),
+        encoding="utf-8",
+    )
+    chosen, info = pick_best_checkpoint(ckpts)
+    assert chosen == c300
+    assert info["chosen"] == "checkpoint-300"
+    assert info["latest"] == "checkpoint-450"
+    assert info["global_step"] == 300
+    assert info["best_metric"] == 1.85
