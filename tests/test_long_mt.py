@@ -11,6 +11,7 @@ from training.evaluate import length_bucket, length_ratio, repetition_rate
 from training.finetune_nllb import (
     balance_by_temperature,
     both_directions,
+    has_data_rows,
     latest_checkpoint,
     synthesize_long_pairs,
     upsample_long_sentences,
@@ -179,3 +180,16 @@ def test_latest_checkpoint_picks_highest_numeric_step(tmp_path: Path):
     best = ckpts / "checkpoint-1500"
     best.mkdir()
     assert latest_checkpoint(ckpts) == best
+
+
+def test_has_data_rows_skips_header_only_csv(tmp_path: Path):
+    header_only = tmp_path / "header_only.csv"
+    header_only.write_text("source_lang,target_lang,source,target,verified\n\n", encoding="utf-8")
+    assert has_data_rows(header_only) is False
+
+    with_row = tmp_path / "with_row.csv"
+    with_row.write_text(
+        "source_lang,target_lang,source,target,verified\ntyz,vi,câu nguồn,câu đích,true\n",
+        encoding="utf-8",
+    )
+    assert has_data_rows(with_row) is True

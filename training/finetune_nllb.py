@@ -266,6 +266,14 @@ def latest_checkpoint(checkpoints_dir: Path) -> Path | None:
     return best_path
 
 
+def has_data_rows(path: Path) -> bool:
+    """Return True if a CSV file has at least one non-empty data row after its header."""
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return any(any(cell.strip() for cell in row) for row in reader)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", nargs="*", type=Path, default=[ROOT / "data" / "public" / "pairs.csv"])
@@ -296,7 +304,7 @@ def main() -> None:
 
     paths = list(args.train)
     reviewed = reviewed_pairs_path()
-    if not args.no_reviewed and reviewed.is_file():
+    if not args.no_reviewed and reviewed.is_file() and has_data_rows(reviewed):
         paths.append(reviewed)
     for path in paths:
         print(path.name, validate_pairs(path))
