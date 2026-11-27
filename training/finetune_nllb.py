@@ -298,6 +298,9 @@ def main() -> None:
     parser.add_argument("--full", action="store_true", help="Fine-tune toàn bộ, cần GPU từ 16 GB")
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--allow-unknown-license", action="store_true")
+    parser.add_argument("--save-steps", type=int, default=0, help="Lưu & eval mỗi N bước (0 = theo từng epoch)")
+    parser.add_argument("--logging-steps", type=int, default=100)
+    parser.add_argument("--workers", type=int, default=0, help="Số worker DataLoader (0 tránh kẹt fork khi dữ liệu đã nạp RAM)")
     parser.add_argument("--resume", action="store_true", help="Tiếp tục từ checkpoint gần nhất trong output/checkpoints nếu có")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -307,7 +310,7 @@ def main() -> None:
     if not args.no_reviewed and reviewed.is_file() and has_data_rows(reviewed):
         paths.append(reviewed)
     for path in paths:
-        print(path.name, validate_pairs(path))
+        print(path.name, validate_pairs(path), flush=True)
 
     unknown_ok = args.allow_unknown_license
     dev_pairs = read_pairs(paths, "dev", unknown_ok)
@@ -338,7 +341,8 @@ def main() -> None:
             "dev": len(dev_rows),
             "languages": languages,
             "directions": counts,
-        }
+        },
+        flush=True,
     )
     if args.dry_run:
         return
@@ -389,6 +393,9 @@ def main() -> None:
     random.Random(args.seed).shuffle(train_features)
 
     per_device = max(1, args.batch // args.grad_accum)
+    by_steps = args.save_steps > 0
+    eval_strategy = ("steps" if by_steps else "epoch") if dev_features else "no"
+    save_strategy = "steps" if by_steps else ("epoch" if dev_features else "no")
     training_args = Seq2SeqTrainingArguments(
         output_dir=str(args.output / "checkpoints"),
         num_train_epochs=args.epochs,
@@ -405,14 +412,17 @@ def main() -> None:
         bf16=bf16,
         fp16=cuda and not bf16,
         group_by_length=True,
-        eval_strategy="epoch" if dev_features else "no",
-        save_strategy="epoch" if dev_features else "no",
-        save_total_limit=1,
+        eval_strategy=eval_strategy,
+        eval_steps=args.save_steps if by_steps and dev_features else None,
+        save_strategy=save_strategy,
+        save_steps=args.save_steps if by_steps else 500,
+        save_total_limit=2 if by_steps else 1,
         load_best_model_at_end=bool(dev_features),
         metric_for_best_model="eval_loss",
-        logging_steps=100,
+        logging_steps=args.logging_steps,
+        disable_tqdm=not sys.stderr.isatty(),
         report_to=[],
-        dataloader_num_workers=2 if cuda else 0,
+        dataloader_num_workers=args.workers,
         seed=args.seed,
     )
     pad_collator = DataCollatorForSeq2Seq(tokenizer, label_pad_token_id=-100, pad_to_multiple_of=8)
@@ -434,7 +444,7 @@ def main() -> None:
     )
     resume_ckpt = latest_checkpoint(args.output / "checkpoints") if args.resume else None
     if resume_ckpt:
-        print(f"Tiếp tục huấn luyện từ checkpoint: {resume_ckpt}")
+        print(f"Tiếp tục huấn luyện từ checkpoint: {resume_ckpt}", flush=True)
     started = time.time()
     trainer.train(resume_from_checkpoint=str(resume_ckpt) if resume_ckpt else None)
     metrics = trainer.evaluate() if dev_features else {}
@@ -460,7 +470,7 @@ def main() -> None:
         "minutes": round((time.time() - started) / 60, 1),
     }
     (args.output / METADATA).write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(metadata)
+    print(metadata, flush=True)
 
 
 if __name__ == "__main__":
