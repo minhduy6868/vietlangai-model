@@ -225,10 +225,13 @@ def encode(tokenizer, rows, max_length: int) -> list[dict]:
 def add_language_tags(tokenizer, model) -> list[int]:
     new = [tag for tag in NEW_TAGS.values() if tag not in tokenizer.get_vocab()]
     if new:
-        tokenizer.add_special_tokens(
-            {"additional_special_tokens": list(tokenizer.additional_special_tokens) + new},
-            replace_additional_special_tokens=False,
-        )
+        if hasattr(tokenizer, "additional_special_tokens"):
+            tokenizer.add_special_tokens(
+                {"additional_special_tokens": list(tokenizer.additional_special_tokens) + new},
+                replace_additional_special_tokens=False,
+            )
+        else:
+            tokenizer.add_tokens(new, special_tokens=True)
     model.resize_token_embeddings(len(tokenizer), mean_resizing=False)
     return init_new_tag_embeddings(model, tokenizer)
 

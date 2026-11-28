@@ -68,10 +68,13 @@ def _ensure_tokenizer(output_dir: Path, base_model: str) -> None:
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     new_tags = [tag for tag in NEW_TAGS.values() if tag not in tokenizer.get_vocab()]
     if new_tags:
-        tokenizer.add_special_tokens(
-            {"additional_special_tokens": list(tokenizer.additional_special_tokens) + new_tags},
-            replace_additional_special_tokens=False,
-        )
+        if hasattr(tokenizer, "additional_special_tokens"):
+            tokenizer.add_special_tokens(
+                {"additional_special_tokens": list(tokenizer.additional_special_tokens) + new_tags},
+                replace_additional_special_tokens=False,
+            )
+        else:
+            tokenizer.add_tokens(new_tags, special_tokens=True)
     tokenizer.save_pretrained(output_dir)
 
 
