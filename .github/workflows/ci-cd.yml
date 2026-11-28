@@ -1,0 +1,54 @@
+name: CI/CD - Ngon Sac Viet ML
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" ruff
+      - name: Lint and test
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          ruff check app/main.py app/nllb.py app/translate.py tests/ --ignore B008
+          pytest tests -q
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_SSH_KEY" ]; then
+            echo "EC2_HOST or EC2_SSH_KEY not set; skipping deploy."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/id_ec2
+          chmod 600 ~/.ssh/id_ec2
+          USER_NAME="${EC2_USER:-ubuntu}"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ec2 "${USER_NAME}@${EC2_HOST}" '
+            set -e
+            cd /opt/vietlangai/ai-model
+            git pull --ff-only origin main
+            .venv/bin/pip install --no-cache-dir .
+            sudo systemctl restart vietlangai-ml
+          '
