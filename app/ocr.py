@@ -21,7 +21,13 @@ def load_image(image: bytes):
             if picture.width * picture.height > MAX_PIXELS:
                 raise ImageRejected("Ảnh quá lớn.")
             picture = ImageOps.exif_transpose(picture).convert("RGB")
+            if max(picture.width, picture.height) < 640:
+                picture = picture.resize(
+                    (picture.width * 2, picture.height * 2),
+                    resample=Image.Resampling.LANCZOS,
+                )
             picture.thumbnail((MAX_SIDE, MAX_SIDE))
+            picture = ImageOps.autocontrast(picture, cutoff=1)
             # EasyOCR reads arrays as OpenCV BGR.
             return np.ascontiguousarray(np.asarray(picture)[..., ::-1])
     except (OSError, ValueError, Image.DecompressionBombError) as exc:

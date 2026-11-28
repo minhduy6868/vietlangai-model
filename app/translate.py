@@ -9,6 +9,7 @@ from app.nllb import NllbEngine
 from app.paths import default_nllb_base, public_pairs_path, reviewed_pairs_path
 
 _PARA_BREAK = re.compile(r"\n\s*\n+")
+_EDGE_PUNCT = ".!?…,:;\"'()[]{}"
 
 
 class RouteNotReady(Exception):
@@ -28,6 +29,10 @@ def normalize(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
+def _strip_edge_punct(text: str) -> str:
+    return normalize(text).strip(_EDGE_PUNCT).strip()
+
+
 def _clean_input(text: str) -> str:
     paragraphs = []
     for block in _PARA_BREAK.split(text.strip()):
@@ -45,7 +50,15 @@ class Glossary:
         return {pair for pair, table in self.pairs.items() if table}
 
     def translate(self, text: str, source: str, target: str) -> str | None:
-        return self.pairs.get((source, target), {}).get(normalize(text))
+        table = self.pairs.get((source, target), {})
+        if not table:
+            return None
+        key = normalize(text)
+        hit = table.get(key)
+        if hit is not None:
+            return hit
+        stripped = _strip_edge_punct(key)
+        return table.get(stripped) if stripped else None
 
 
 def builtin_glossary() -> Glossary:
@@ -73,14 +86,22 @@ def _add_pair(glossary: Glossary, source_lang: str, target_lang: str, source: st
     if not source_lang or not target_lang or not source_text or not target_text:
         return
     pair = (source_lang, target_lang)
-    glossary.pairs.setdefault(pair, {})
-    glossary.pairs[pair][normalize(source_text)] = target_text
+    table = glossary.pairs.setdefault(pair, {})
+    norm_src = normalize(source_text)
+    table[norm_src] = target_text
+    stripped_src = _strip_edge_punct(norm_src)
+    if stripped_src and stripped_src != norm_src:
+        table.setdefault(stripped_src, target_text)
     # Exact-match glossaries are directional; mirror ethnic ↔ vi for lookup both ways.
     ethnic = set(ethnic_codes())
     if {source_lang, target_lang} & ethnic and "vi" in {source_lang, target_lang}:
         reverse = (target_lang, source_lang)
-        glossary.pairs.setdefault(reverse, {})
-        glossary.pairs[reverse][normalize(target_text)] = source_text
+        rev_table = glossary.pairs.setdefault(reverse, {})
+        norm_tgt = normalize(target_text)
+        rev_table[norm_tgt] = source_text
+        stripped_tgt = _strip_edge_punct(norm_tgt)
+        if stripped_tgt and stripped_tgt != norm_tgt:
+            rev_table.setdefault(stripped_tgt, source_text)
 
 
 def _load_pairs_file(glossary: Glossary, path) -> None:

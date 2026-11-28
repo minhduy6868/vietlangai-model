@@ -34,18 +34,30 @@ def is_khmer_script(char: str) -> bool:
     return "\u1780" <= char <= "\u17FF"
 
 
+def is_lao_script(char: str) -> bool:
+    return "\u0E80" <= char <= "\u0EFF"
+
+
+def is_han_script(char: str) -> bool:
+    return "\u4E00" <= char <= "\u9FFF"
+
+
 def detect_language(text: str) -> dict:
     """Guess the language of a short text.
 
-    Cham script is decided from characters. When models/langid.json exists, a
-    character n-gram model separates the trained Latin-script languages and
-    answers only above MIN_CONFIDENCE. Otherwise, or below that, the lexicon
-    rule answers vi/en and refuses to guess ethnic Latin text.
+    Non-Latin scripts (Cham, Khmer, Lao, Han) are decided from character ranges.
+    When models/langid.json exists, a character n-gram model separates trained
+    Latin-script languages above MIN_CONFIDENCE. Otherwise the lexicon rule
+    answers vi/en and refuses to guess ethnic Latin text.
     """
     if any(is_cham_script(char) for char in text):
         return {"language": "cjm", "confidence": 0.99, "method": "script"}
     if any(is_khmer_script(char) for char in text):
         return {"language": "khm", "confidence": 0.99, "method": "script"}
+    if any(is_lao_script(char) for char in text):
+        return {"language": "lao", "confidence": 0.99, "method": "script"}
+    if any(is_han_script(char) for char in text):
+        return {"language": "zho", "confidence": 0.99, "method": "script"}
     tokens = [token.casefold() for token in _TOKEN.findall(text)]
     if not tokens:
         return {"language": "und", "confidence": 0.0, "method": "empty"}

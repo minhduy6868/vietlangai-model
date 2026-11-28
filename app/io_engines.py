@@ -1,7 +1,12 @@
 import os
 from functools import lru_cache
 
-from app.asr import CheckpointNotVerified, WhisperEngine
+from app.asr import (
+    PRETRAINED_ASR_MODELS,
+    CheckpointNotVerified,
+    PretrainedWhisperEngine,
+    WhisperEngine,
+)
 from app.audio import SAMPLE_RATE, AudioDecodeError, decode_audio
 from app.ocr import LATIN_OCR_WARNING, EasyOcrEngine, ImageRejected, load_image
 
@@ -13,13 +18,15 @@ class EngineUnavailable(Exception):
 
 
 @lru_cache
-def asr_engine() -> WhisperEngine:
+def asr_engine():
     kind = os.getenv("ML_ASR_ENGINE", "unloaded")
     if kind != "whisper":
         raise EngineUnavailable(
             "Mô hình giọng nói chưa được nạp. Fine-tune Whisper và đặt ML_ASR_ENGINE=whisper khi checkpoint đã kiểm tra."
         )
     model_dir = os.getenv("ML_ASR_MODEL", "")
+    if model_dir in PRETRAINED_ASR_MODELS:
+        return PretrainedWhisperEngine(model_dir, whisper_language=os.getenv("ML_ASR_LANGUAGE", "vi"))
     try:
         return WhisperEngine(model_dir)
     except CheckpointNotVerified as exc:

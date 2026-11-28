@@ -13,7 +13,13 @@ _PARA_BREAK = re.compile(r"\n\s*\n+")
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
 
-BASE_TAGS = {"vi": "vie_Latn", "en": "eng_Latn", "khm": "khm_Khmr"}
+BASE_TAGS = {
+    "vi": "vie_Latn",
+    "en": "eng_Latn",
+    "khm": "khm_Khmr",
+    "zho": "zho_Hans",
+    "lao": "lao_Laoo",
+}
 NEW_TAGS = {
     "tyz": "tyz_Latn",
     "rad": "rad_Latn",
@@ -131,7 +137,16 @@ class NllbEngine:
         self._lock = threading.Lock()
 
     def pairs(self) -> set[tuple[str, str]]:
-        pairs = {("vi", "en"), ("en", "vi"), ("vi", "khm"), ("khm", "vi")}
+        pairs = {
+            ("vi", "en"),
+            ("en", "vi"),
+            ("vi", "khm"),
+            ("khm", "vi"),
+            ("vi", "zho"),
+            ("zho", "vi"),
+            ("vi", "lao"),
+            ("lao", "vi"),
+        }
         for code in self.languages:
             for direction in ((code, "vi"), ("vi", code)):
                 if not self.gated or self.passed(*direction):
@@ -186,7 +201,7 @@ class NllbEngine:
                 "forced_bos_token_id": forced,
                 "num_beams": self.beams,
                 "max_new_tokens": budget,
-                "length_penalty": 1.1,
+                "length_penalty": 1.0 if inputs["input_ids"].shape[1] <= 12 else 1.05,
                 "no_repeat_ngram_size": 3,
                 "repetition_penalty": 1.1,
                 "early_stopping": True,

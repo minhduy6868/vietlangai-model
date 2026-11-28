@@ -103,6 +103,7 @@ def test_kaggle_notebook_and_auto_installer(tmp_path: Path):
         Path("notebooks/kaggle/train_nllb_ethnic.ipynb"),
         Path("notebooks/kaggle/train_nllb_cpu.ipynb"),
         Path("notebooks/kaggle/train_whisper_hmn.ipynb"),
+        Path("notebooks/kaggle/train_whisper_bahnar.ipynb"),
         Path("notebooks/colab/train_nllb_ethnic_colab.ipynb"),
     ):
         nb = json.loads((ROOT / rel).read_text(encoding="utf-8"))
@@ -235,3 +236,38 @@ def test_import_public_reads_csv_with_bom_and_parallel_text(tmp_path: Path):
     ba_path.write_text("Pơgơl tơdrong\n", encoding="utf-8")
     vi_path.write_text("Chỉ đạo công việc\n", encoding="utf-8")
     assert read_parallel_text(ba_path, vi_path) == [("Pơgơl tơdrong", "Chỉ đạo công việc")]
+
+
+def test_glossary_matches_trailing_punctuation_and_asr_pretrained(monkeypatch, tmp_path: Path):
+    import pytest
+
+    from app.asr import CheckpointNotVerified, PretrainedWhisperEngine
+    from app.io_engines import EngineUnavailable, asr_engine
+    from app.translate import _add_pair
+
+    g = Glossary()
+    _add_pair(g, "rad", "vi", "Lač jăk lu sonăk.", "Cám ơn nhiều lắm.")
+    assert g.translate("Cám ơn nhiều lắm", "vi", "rad") == "Lač jăk lu sonăk."
+    assert g.translate("Lač jăk lu sonăk!", "rad", "vi") == "Cám ơn nhiều lắm."
+
+    asr_engine.cache_clear()
+    monkeypatch.setenv("ML_ASR_ENGINE", "whisper")
+    monkeypatch.setenv("ML_ASR_MODEL", "vinai/PhoWhisper-small")
+    engine = asr_engine()
+    assert isinstance(engine, PretrainedWhisperEngine)
+    assert engine.whisper_language == "vi"
+
+    bad_ckpt = tmp_path / "bad-whisper"
+    bad_ckpt.mkdir()
+    (bad_ckpt / "ngonsacviet.json").write_text(
+        json.dumps({"task": "speech_translation", "language": "hmn", "test_wer": 0.9, "trained_on_unverified": True}),
+        encoding="utf-8",
+    )
+    asr_engine.cache_clear()
+    monkeypatch.setenv("ML_ASR_MODEL", str(bad_ckpt))
+    try:
+        with pytest.raises(EngineUnavailable) as exc_info:
+            asr_engine()
+        assert isinstance(exc_info.value.__cause__, CheckpointNotVerified)
+    finally:
+        asr_engine.cache_clear()

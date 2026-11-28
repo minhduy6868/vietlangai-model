@@ -121,6 +121,36 @@
       "ocr_status": "khmer_script"
     },
     {
+      "code": "zho",
+      "iso639_3": "zho",
+      "name_vi": "Tiếng Hoa",
+      "name_en": "Chinese (Hoa)",
+      "script": "Hans",
+      "family": "Sino-Tibetan, Sinitic",
+      "role": "ethnic",
+      "evaluation_tier": 1,
+      "nllb_code": "zho_Hans",
+      "orthography": "Chữ Hán giản thể (Hans)",
+      "mt_status": "high_resource",
+      "asr_status": "whisper",
+      "ocr_status": "han_script"
+    },
+    {
+      "code": "lao",
+      "iso639_3": "lao",
+      "name_vi": "Tiếng Lào",
+      "name_en": "Lao",
+      "script": "Laoo",
+      "family": "Tai-Kadai",
+      "role": "ethnic",
+      "evaluation_tier": 1,
+      "nllb_code": "lao_Laoo",
+      "orthography": "Chữ Lào (Laoo)",
+      "mt_status": "high_resource",
+      "asr_status": "whisper",
+      "ocr_status": "lao_script"
+    },
+    {
       "code": "vi",
       "iso639_3": "vie",
       "name_vi": "Tiếng Việt",
@@ -231,6 +261,26 @@
       "region_en": "Soc Trang, Tra Vinh, Kien Giang, An Giang and the Mekong Delta",
       "origin_vi": "Tiếng Khmer thuộc ngữ hệ Nam Á, sử dụng hệ chữ Khmer truyền thống (Khmr). Nhờ được hỗ trợ sẵn trong NLLB-200 gốc (mã khm_Khmr), hệ thống dịch trực tiếp Khmer ↔ Việt đạt chất lượng cao ngay lập tức.",
       "origin_en": "Khmer is an Austroasiatic language written in Khmer script (Khmr). Native khm_Khmr support in base NLLB-200 enables immediate bidirectional Khmer ↔ Vietnamese translation."
+    },
+    {
+      "slug": "hoa",
+      "language_code": "zho",
+      "name_vi": "Người Hoa",
+      "name_en": "Hoa (Chinese) people",
+      "region_vi": "TP. Hồ Chí Minh, Đồng Nai, Sóc Trăng, Bạc Liêu, Quảng Ninh và nhiều đô thị",
+      "region_en": "Ho Chi Minh City, Dong Nai, Soc Trang, Bac Lieu, Quang Ninh and urban centers",
+      "origin_vi": "Cộng đồng người Hoa tại Việt Nam sử dụng tiếng Hoa (nhánh Hán–Tạng). Mã zho_Hans được tích hợp sẵn trong NLLB-200 cho phép dịch trực tiếp Hoa ↔ Việt chất lượng cao.",
+      "origin_en": "Hoa communities in Vietnam speak Chinese varieties (Sino-Tibetan). Native zho_Hans support in NLLB-200 provides immediate high-quality Hoa ↔ Vietnamese translation."
+    },
+    {
+      "slug": "lao",
+      "language_code": "lao",
+      "name_vi": "Người Lào",
+      "name_en": "Lao people",
+      "region_vi": "Điện Biên, Sơn La, Lai Châu, Thanh Hóa và khu vực Tây Bắc",
+      "region_en": "Dien Bien, Son La, Lai Chau, Thanh Hoa and northwestern border provinces",
+      "origin_vi": "Người Lào thuộc nhóm dân tộc Việt Nam có chữ Lào (Laoo), họ Tai-Kadai gần gũi với tiếng Tày và Thái. Mã lao_Laoo có sẵn trong NLLB-200 giúp dịch trực tiếp Lào ↔ Việt.",
+      "origin_en": "The Lao ethnic group in Vietnam uses Lao script (Laoo) in the Tai-Kadai family. Native lao_Laoo in NLLB-200 enables immediate bidirectional Lao ↔ Vietnamese translation."
     }
   ],
   "heritage": [
@@ -297,6 +347,22 @@
       "title_en": "Southern Khmer script and heritage",
       "body_vi": "Cộng đồng Khmer Nam Bộ gìn giữ chữ viết Khmer (Khmr) trong chùa chiền, lễ hội Ok Om Bok và nghệ thuật Dù Kê. Hệ thống hỗ trợ nhận diện tự động chữ Khmer và dịch hai chiều Khmer ↔ Việt.",
       "body_en": "Southern Khmer communities preserve Khmer script in pagodas, Ok Om Bok festivals and Du Ke theatre, supported by automatic script detection and bidirectional Khmer ↔ Vietnamese translation."
+    },
+    {
+      "slug": "hoa",
+      "kind": "article",
+      "title_vi": "Di sản văn hóa và ngôn ngữ người Hoa",
+      "title_en": "Hoa cultural and linguistic heritage",
+      "body_vi": "Người Hoa giữ gìn nghệ thuật thư pháp, múa lân sư rồng, hội quán và chữ Hán qua nhiều thế hệ. Hệ thống tự động nhận diện chữ Hán và dịch hai chiều Hoa ↔ Việt.",
+      "body_en": "Hoa communities preserve calligraphy, lion dance, assembly halls and Chinese writing across generations, with automatic script detection and bidirectional translation."
+    },
+    {
+      "slug": "lao",
+      "kind": "article",
+      "title_vi": "Chữ viết và lễ hội té nước người Lào",
+      "title_en": "Lao script and Bun Pimay traditions",
+      "body_vi": "Cộng đồng người Lào ở Tây Bắc duy trì chữ viết Lào (Laoo), múa lăm vông và tết té nước Bun Pimay. Hệ thống tự động nhận diện chữ Lào và dịch Lào ↔ Việt.",
+      "body_en": "Lao communities in northwest Vietnam preserve Lao script, Lam Vong dance and Bun Pimay traditions, supported by automatic script detection and Lao ↔ Vietnamese translation."
     }
   ]
 }

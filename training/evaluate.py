@@ -34,6 +34,8 @@ NAMES = {
     "bdq": "Ba Na",
     "mtq": "Mường",
     "khm": "Khmer",
+    "zho": "Hoa",
+    "lao": "Lào",
     "vi": "Việt",
 }
 BUCKETS = ("1-7w", "8-15w", "16+w")
