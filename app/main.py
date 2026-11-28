@@ -29,7 +29,12 @@ def _prewarm_translator() -> None:
     tr = translator()
     neural = getattr(tr, "neural", None)
     if neural is not None and hasattr(neural, "_load"):
-        neural._load()
+        lock = getattr(neural, "_lock", None)
+        if lock is not None:
+            with lock:
+                neural._load()
+        else:
+            neural._load()
 
 
 @asynccontextmanager

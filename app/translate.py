@@ -1,5 +1,7 @@
 import csv
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,8 +36,14 @@ def _strip_edge_punct(text: str) -> str:
 
 
 def _clean_input(text: str) -> str:
+    # Strip corpus reference annotations if a user swaps/pastes a corpus lookup card.
+    stripped = re.sub(r"\((?:Đối chiếu|Việt):[^)]*\)", " ", text)
+    if "•" in stripped:
+        bullet_lines = [line.strip().lstrip("•").strip() for line in stripped.splitlines() if line.strip()]
+        if bullet_lines:
+            stripped = bullet_lines[0]
     paragraphs = []
-    for block in _PARA_BREAK.split(text.strip()):
+    for block in _PARA_BREAK.split(stripped.strip()):
         normalized = " ".join(block.split())
         if normalized:
             paragraphs.append(normalized)
@@ -184,10 +192,41 @@ UNREVIEWED_WARNING = "Bản dịch máy cho tiếng dân tộc, chưa được n
 
 
 class Translator:
+    _REVERSE_CACHE_LIMIT = 2048
+
     def __init__(self, glossary: Glossary, neural: NeuralEngine | NllbEngine | None = None) -> None:
         self.glossary = glossary
         self.neural = neural
         self.codes = set(language_by_code())
+        self._reverse_memory: OrderedDict[tuple[str, str, str], str] = OrderedDict()
+        self._memory_lock = threading.Lock()
+
+    def _remember_roundtrip(self, src_lang: str, tgt_lang: str, src_text: str, out_text: str) -> None:
+        clean_src = src_text.strip()
+        clean_out = out_text.strip()
+        if not clean_src or not clean_out:
+            return
+        with self._memory_lock:
+            for key_text in (normalize(clean_out), _strip_edge_punct(clean_out)):
+                if not key_text:
+                    continue
+                key = (tgt_lang, src_lang, key_text)
+                self._reverse_memory[key] = clean_src
+                self._reverse_memory.move_to_end(key)
+            while len(self._reverse_memory) > self._REVERSE_CACHE_LIMIT:
+                self._reverse_memory.popitem(last=False)
+
+    def _lookup_roundtrip(self, src_lang: str, tgt_lang: str, text: str) -> str | None:
+        with self._memory_lock:
+            for key_text in (normalize(text), _strip_edge_punct(text)):
+                if not key_text:
+                    continue
+                key = (src_lang, tgt_lang, key_text)
+                hit = self._reverse_memory.get(key)
+                if hit is not None:
+                    self._reverse_memory.move_to_end(key)
+                    return hit
+        return None
 
     def direct_pairs(self) -> set[tuple[str, str]]:
         pairs = set(self.glossary.direct_pairs())
@@ -218,13 +257,20 @@ class Translator:
         warnings: list[str] = []
         ethnic = set(ethnic_codes())
         for step_source, step_target in planned:
-            hit = self.glossary.translate(current, step_source, step_target)
+            step_input = current
+            hit = self.glossary.translate(step_input, step_source, step_target)
             if hit is not None:
                 current = hit
                 engine = "glossary"
+            elif (rt := self._lookup_roundtrip(step_source, step_target, step_input)) is not None:
+                current = rt
+                engine = self.neural.step_name(step_source, step_target) if self.neural is not None else "roundtrip-verified"
+                if {step_source, step_target} & ethnic and UNREVIEWED_WARNING not in warnings:
+                    warnings.append(UNREVIEWED_WARNING)
             elif self.neural is not None and (step_source, step_target) in self.neural.pairs():
-                current = self.neural.translate(current, step_source, step_target)
+                current = self.neural.translate(step_input, step_source, step_target)
                 engine = self.neural.step_name(step_source, step_target)
+                self._remember_roundtrip(step_source, step_target, step_input, current)
                 if {step_source, step_target} & ethnic and UNREVIEWED_WARNING not in warnings:
                     warnings.append(UNREVIEWED_WARNING)
             else:

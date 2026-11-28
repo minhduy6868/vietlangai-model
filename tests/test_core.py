@@ -279,3 +279,13 @@ def test_import_split_keeps_declared_test_and_filters_noise():
     assert keep("một hai ba bốn năm sáu bảy tám chín mười", "một") is False
     assert keep("", "câu") is False
     assert keep("noọng", "em gái") is True
+
+
+def test_translator_roundtrip_and_annotation_cleaning():
+    translator = Translator(builtin_glossary(), FakeNeural())
+    fwd = translator.translate("tôi yêu bạn quá đi", "vi", "tyz")
+    assert fwd["text"] == "<tôi yêu bạn quá đi>"
+    # Stripping corpus-lookup decorations recovers the clean roundtrip source.
+    formatted = f"• {fwd['text']}\n  (Đối chiếu: tôi yêu bạn quá đi)"
+    bwd = translator.translate(formatted, "tyz", "vi")
+    assert bwd["text"] == "tôi yêu bạn quá đi"
