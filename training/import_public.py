@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.textnorm import clean  # noqa: E402
+from app.textnorm import clean
 
 HF = "https://huggingface.co/datasets/{repo}/resolve/main/{file}"
 
@@ -52,6 +52,34 @@ SOURCES = {
         "files": {"all": "bible_vietnamese_jarai/vie151_jrai1973/vie_jrai.parquet"},
         "fields": (None, "Jarai", "Vietnamese"),
     },
+    "bahnar-eaai24": {
+        "repo": "nhatkhangdtp/EAAI24-viet-bahnar-sentences-aligned",
+        "lang": "bdq",
+        "license": "unknown",
+        "format": "parallel_text",
+        "files": {
+            "train": (
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/train.ba",
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/train.vi",
+            ),
+            "dev": (
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/valid.ba",
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/valid.vi",
+            ),
+            "test": (
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/test.ba",
+                "EAAI24-official-bahnaric-dataset/parallel_corpus/test.vi",
+            ),
+        },
+    },
+    "viet-muong": {
+        "repo": "LKAusagi/VietMuong",
+        "lang": "mtq",
+        "license": "other",
+        "format": "csv",
+        "files": {"all": "sentence_pairs.csv"},
+        "fields": (None, "SentenceM", "SentenceV"),
+    },
 }
 DEFAULT = ("tay-vietnamese-nmt", "rhade-vietnamese-mt")
 COLUMNS = ("source_lang", "target_lang", "source", "target", "verified", "split", "source_dataset", "license")
@@ -80,15 +108,37 @@ def read_rows(path: Path, fields: tuple) -> list[tuple[str, str]]:
     return rows
 
 
+def read_csv_rows(path: Path, src_key: str, tgt_key: str) -> list[tuple[str, str]]:
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return [((row.get(src_key) or ""), (row.get(tgt_key) or "")) for row in csv.DictReader(handle)]
+
+
+def read_parallel_text(src_path: Path, tgt_path: Path) -> list[tuple[str, str]]:
+    src_lines = src_path.read_text(encoding="utf-8").splitlines()
+    tgt_lines = tgt_path.read_text(encoding="utf-8").splitlines()
+    if len(src_lines) != len(tgt_lines):
+        raise ValueError(f"Số dòng không khớp giữa {src_path.name} ({len(src_lines)}) và {tgt_path.name} ({len(tgt_lines)})")
+    return list(zip(src_lines, tgt_lines))
+
+
+def read_source_split(spec: dict, file_spec, cache: Path) -> list[tuple[str, str]]:
+    fmt = spec.get("format", "parquet")
+    if fmt == "parquet":
+        return read_rows(fetch(spec["repo"], file_spec, cache), spec["fields"])
+    if fmt == "csv":
+        return read_csv_rows(fetch(spec["repo"], file_spec, cache), spec["fields"][1], spec["fields"][2])
+    if fmt == "parallel_text":
+        return read_parallel_text(fetch(spec["repo"], file_spec[0], cache), fetch(spec["repo"], file_spec[1], cache))
+    raise ValueError(f"Không hỗ trợ định dạng nguồn {fmt}")
+
+
 def keep(src: str, tgt: str) -> bool:
     if not src or not tgt:
         return False
     if len(src) > 400 or len(tgt) > 400:
         return False
     a, b = len(src.split()), len(tgt.split())
-    if max(a, b) >= 4 and max(a, b) > 3.5 * min(a, b):
-        return False
-    return True
+    return not (max(a, b) >= 4 and max(a, b) > 3.5 * min(a, b))
 
 
 def assign_split(declared: str, src: str, dev_share: float, has_dev: bool) -> str:
@@ -110,7 +160,7 @@ def import_source(name: str, cache: Path, dev_share: float) -> tuple[list[dict],
     stats = {"read": 0, "filtered": 0, "duplicate": 0, "leak": 0}
     seen: set[tuple[str, str]] = set()
     for declared, file in spec["files"].items():
-        for raw_src, raw_tgt in read_rows(fetch(spec["repo"], file, cache), spec["fields"]):
+        for raw_src, raw_tgt in read_source_split(spec, file, cache):
             stats["read"] += 1
             src, tgt = clean(raw_src), clean(raw_tgt)
             if not keep(src, tgt):
@@ -146,14 +196,16 @@ def import_source(name: str, cache: Path, dev_share: float) -> tuple[list[dict],
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--include", nargs="*", default=list(DEFAULT), choices=sorted(SOURCES))
+    parser.add_argument("--all-public", action="store_true", help="Nạp toàn bộ 5 nguồn song ngữ công khai (tyz, rad, bdq, mtq, jra)")
     parser.add_argument("--allow-unknown-license", action="store_true")
     parser.add_argument("--output", type=Path, default=ROOT / "data" / "public" / "pairs.csv")
     parser.add_argument("--cache", type=Path, default=ROOT / "data" / "public" / "raw")
     parser.add_argument("--dev-share", type=float, default=0.03)
     args = parser.parse_args()
 
+    selected = list(SOURCES) if args.all_public else list(args.include)
     all_rows: list[dict] = []
-    for name in args.include:
+    for name in selected:
         if SOURCES[name]["license"] == "unknown" and not args.allow_unknown_license:
             raise SystemExit(f"{name} không ghi license. Thêm --allow-unknown-license nếu nhóm đã kiểm tra quyền dùng.")
         rows, stats = import_source(name, args.cache, args.dev_share)

@@ -71,9 +71,54 @@
       "evaluation_tier": 2,
       "nllb_code": null,
       "orthography": "Latin",
-      "mt_status": "prior_smt",
+      "mt_status": "public_bitext",
       "asr_status": "collect",
       "ocr_status": "latin"
+    },
+    {
+      "code": "bdq",
+      "iso639_3": "bdq",
+      "name_vi": "Tiếng Ba Na",
+      "name_en": "Bahnar",
+      "script": "Latn",
+      "family": "Austroasiatic, Bahnaric",
+      "role": "ethnic",
+      "evaluation_tier": 1,
+      "nllb_code": null,
+      "orthography": "Latin (Bình Định / Tây Nguyên)",
+      "mt_status": "public_bitext",
+      "asr_status": "public_audio",
+      "ocr_status": "latin"
+    },
+    {
+      "code": "mtq",
+      "iso639_3": "mtq",
+      "name_vi": "Tiếng Mường",
+      "name_en": "Muong",
+      "script": "Latn",
+      "family": "Austroasiatic, Vietic",
+      "role": "ethnic",
+      "evaluation_tier": 1,
+      "nllb_code": null,
+      "orthography": "Latin theo ngữ âm Việt-Mường",
+      "mt_status": "public_bitext",
+      "asr_status": "collect",
+      "ocr_status": "latin"
+    },
+    {
+      "code": "khm",
+      "iso639_3": "khm",
+      "name_vi": "Tiếng Khmer",
+      "name_en": "Khmer",
+      "script": "Khmr",
+      "family": "Austroasiatic, Khmeric",
+      "role": "ethnic",
+      "evaluation_tier": 1,
+      "nllb_code": "khm_Khmr",
+      "orthography": "Chữ Khmer (Khmr)",
+      "mt_status": "high_resource",
+      "asr_status": "whisper",
+      "ocr_status": "khmer_script"
     },
     {
       "code": "vi",
@@ -156,6 +201,36 @@
       "region_en": "Gia Lai, Kon Tum and nearby Central Highlands areas",
       "origin_vi": "Tiếng Jrai thuộc nhóm Chamic, gần với tiếng Ê Đê. Đã có hệ dịch thống kê Jrai–Việt từ năm 2012 và từ điển song ngữ, nhưng corpus câu công khai trên Hugging Face còn ít. Giai đoạn một dùng chuyển giao từ Ê Đê, giữ đúng chính tả Jrai khi nhập dữ liệu mới.",
       "origin_en": "Jarai is Chamic and close to Ede. A statistical Jarai–Vietnamese system existed in 2012, along with bilingual dictionaries, but public sentence corpora are still limited. Phase one transfers from Ede and keeps Jarai orthography when new data is imported."
+    },
+    {
+      "slug": "bahnar",
+      "language_code": "bdq",
+      "name_vi": "Người Ba Na",
+      "name_en": "Bahnar people",
+      "region_vi": "Gia Lai, Kon Tum, Bình Định và các tỉnh Tây Nguyên - Nam Trung Bộ",
+      "region_en": "Gia Lai, Kon Tum, Binh Dinh and nearby central highland provinces",
+      "origin_vi": "Tiếng Ba Na thuộc nhánh Bahnaric, ngữ hệ Nam Á. Đã có bộ dữ liệu song ngữ Ba Na–Việt chuẩn hóa từ hội thảo EAAI 2024 cùng kho audio song song phong phú để huấn luyện dịch chữ và giọng nói.",
+      "origin_en": "Bahnar belongs to the Bahnaric branch of Austroasiatic. Standardized EAAI 2024 parallel sentence pairs and aligned speech corpora support both text and speech translation."
+    },
+    {
+      "slug": "muong",
+      "language_code": "mtq",
+      "name_vi": "Người Mường",
+      "name_en": "Muong people",
+      "region_vi": "Hòa Bình, Thanh Hóa, Phú Thọ, Sơn La và vùng núi phía Bắc",
+      "region_en": "Hoa Binh, Thanh Hoa, Phu Tho, Son La and northern midland provinces",
+      "origin_vi": "Tiếng Mường thuộc nhánh Việt–Mường (họ Nam Á), có quan hệ họ hàng gần nhất với tiếng Việt. Bộ câu song ngữ VietMuong cung cấp hơn 12.000 cặp câu Việt–Mường phục vụ dịch máy.",
+      "origin_en": "Muong belongs to the Vietic branch of Austroasiatic, closely related to Vietnamese. The VietMuong corpus provides over 12,000 aligned Vietnamese–Muong sentence pairs."
+    },
+    {
+      "slug": "khmer",
+      "language_code": "khm",
+      "name_vi": "Người Khmer",
+      "name_en": "Khmer people",
+      "region_vi": "Sóc Trăng, Trà Vinh, Kiên Giang, An Giang và đồng bằng sông Cửu Long",
+      "region_en": "Soc Trang, Tra Vinh, Kien Giang, An Giang and the Mekong Delta",
+      "origin_vi": "Tiếng Khmer thuộc ngữ hệ Nam Á, sử dụng hệ chữ Khmer truyền thống (Khmr). Nhờ được hỗ trợ sẵn trong NLLB-200 gốc (mã khm_Khmr), hệ thống dịch trực tiếp Khmer ↔ Việt đạt chất lượng cao ngay lập tức.",
+      "origin_en": "Khmer is an Austroasiatic language written in Khmer script (Khmr). Native khm_Khmr support in base NLLB-200 enables immediate bidirectional Khmer ↔ Vietnamese translation."
     }
   ],
   "heritage": [
@@ -198,6 +273,30 @@
       "title_en": "Speech in the highlands",
       "body_vi": "Tiếng Jrai là ngôn ngữ giao tiếp chính của cộng đồng ở Gia Lai và Kon Tum. Tư liệu đưa vào hệ thống cần ghi rõ vùng phương ngữ và người rà soát.",
       "body_en": "Jarai is a main community language in Gia Lai and Kon Tum. Material entered into the system should name the dialect area and the reviewer."
+    },
+    {
+      "slug": "bahnar",
+      "kind": "article",
+      "title_vi": "Nhà rông và sử thi Ba Na",
+      "title_en": "Communal houses and Bahnar epics",
+      "body_vi": "Tiếng Ba Na gắn liền với không gian cồng chiêng, nhà rông và trường ca Hơmon ở Tây Nguyên và Bình Định. Dữ liệu hội thoại đời sống và văn bản hành chính giúp công cụ dịch phục vụ tốt giao tiếp hàng ngày.",
+      "body_en": "Bahnar is tied to gong culture, communal rong houses and Homon epics across the Central Highlands and Binh Dinh."
+    },
+    {
+      "slug": "muong",
+      "kind": "article",
+      "title_vi": "Tiếng Mường và sử thi Đẻ đất đẻ nước",
+      "title_en": "Muong language and oral heritage",
+      "body_vi": "Người Mường lưu giữ kho mo Mường và sử thi Đẻ đất đẻ nước giàu giá trị văn hóa. Dữ liệu song ngữ Việt–Mường giúp cầu nối giao tiếp giữa các vùng Mường và tiếng Việt phổ thông.",
+      "body_en": "The Muong community preserves rich oral epics such as Birth of the Earth and Water alongside daily bilingual communication with Vietnamese."
+    },
+    {
+      "slug": "khmer",
+      "kind": "article",
+      "title_vi": "Chữ viết và văn hóa Khmer Nam Bộ",
+      "title_en": "Southern Khmer script and heritage",
+      "body_vi": "Cộng đồng Khmer Nam Bộ gìn giữ chữ viết Khmer (Khmr) trong chùa chiền, lễ hội Ok Om Bok và nghệ thuật Dù Kê. Hệ thống hỗ trợ nhận diện tự động chữ Khmer và dịch hai chiều Khmer ↔ Việt.",
+      "body_en": "Southern Khmer communities preserve Khmer script in pagodas, Ok Om Bok festivals and Du Ke theatre, supported by automatic script detection and bidirectional Khmer ↔ Vietnamese translation."
     }
   ]
 }

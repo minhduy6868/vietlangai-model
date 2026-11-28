@@ -25,7 +25,17 @@ from finetune_nllb import both_directions, read_pairs
 from app.checkpoints import read_metadata, write_metadata
 from app.paths import default_nllb_base
 
-NAMES = {"tyz": "Tày", "rad": "Ê Đê", "jra": "Jrai", "cjm": "Chăm", "hmn": "H'Mông", "vi": "Việt"}
+NAMES = {
+    "tyz": "Tày",
+    "rad": "Ê Đê",
+    "jra": "Jrai",
+    "cjm": "Chăm",
+    "hmn": "H'Mông",
+    "bdq": "Ba Na",
+    "mtq": "Mường",
+    "khm": "Khmer",
+    "vi": "Việt",
+}
 BUCKETS = ("1-7w", "8-15w", "16+w")
 
 

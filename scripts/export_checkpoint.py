@@ -110,7 +110,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export and evaluate best/latest partial checkpoint.")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--base", default="facebook/nllb-200-distilled-600M")
-    parser.add_argument("--languages", nargs="+", default=["rad", "tyz"])
+    parser.add_argument("--languages", nargs="+", default=["bdq", "jra", "mtq", "rad", "tyz"])
     parser.add_argument("--method", default="lora-r64")
     parser.add_argument("--evaluate", action="store_true")
     parser.add_argument("--smoke", action="store_true")

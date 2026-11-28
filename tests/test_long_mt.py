@@ -221,3 +221,17 @@ def test_pick_best_checkpoint_prefers_trainer_state_best(tmp_path: Path):
     assert info["latest"] == "checkpoint-450"
     assert info["global_step"] == 300
     assert info["best_metric"] == 1.85
+
+
+def test_import_public_reads_csv_with_bom_and_parallel_text(tmp_path: Path):
+    from training.import_public import read_csv_rows, read_parallel_text
+
+    csv_path = tmp_path / "muong.csv"
+    csv_path.write_bytes("\ufeffSentenceM,SentenceV\nho pắt ản,tớ bắt được\n".encode("utf-8"))
+    assert read_csv_rows(csv_path, "SentenceM", "SentenceV") == [("ho pắt ản", "tớ bắt được")]
+
+    ba_path = tmp_path / "train.ba"
+    vi_path = tmp_path / "train.vi"
+    ba_path.write_text("Pơgơl tơdrong\n", encoding="utf-8")
+    vi_path.write_text("Chỉ đạo công việc\n", encoding="utf-8")
+    assert read_parallel_text(ba_path, vi_path) == [("Pơgơl tơdrong", "Chỉ đạo công việc")]

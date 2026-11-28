@@ -30,6 +30,10 @@ def is_cham_script(char: str) -> bool:
     return "\uAA00" <= char <= "\uAA5F"
 
 
+def is_khmer_script(char: str) -> bool:
+    return "\u1780" <= char <= "\u17FF"
+
+
 def detect_language(text: str) -> dict:
     """Guess the language of a short text.
 
@@ -40,6 +44,8 @@ def detect_language(text: str) -> dict:
     """
     if any(is_cham_script(char) for char in text):
         return {"language": "cjm", "confidence": 0.99, "method": "script"}
+    if any(is_khmer_script(char) for char in text):
+        return {"language": "khm", "confidence": 0.99, "method": "script"}
     tokens = [token.casefold() for token in _TOKEN.findall(text)]
     if not tokens:
         return {"language": "und", "confidence": 0.0, "method": "empty"}

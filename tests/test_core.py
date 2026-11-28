@@ -3,7 +3,13 @@ from pathlib import Path
 import pytest
 
 from app.detect import detect_language
-from app.translate import Glossary, RouteNotReady, Translator, builtin_glossary, plan_route
+from app.translate import (
+    Glossary,
+    RouteNotReady,
+    Translator,
+    builtin_glossary,
+    plan_route,
+)
 from training.validate_pairs import PairFileError, validate_pairs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_catalog_contains_the_five_languages():
     from app.catalog import ethnic_codes
 
-    assert ethnic_codes() == ["tyz", "rad", "cjm", "hmn", "jra"]
+    assert ethnic_codes() == ["tyz", "rad", "cjm", "hmn", "jra", "bdq", "mtq", "khm"]
 
 
 def test_direct_glossary_translation():
@@ -57,6 +63,7 @@ def no_langid(tmp_path: Path, monkeypatch):
 
 def test_detect_cham_script_vietnamese_and_unknown_latin(no_langid):
     assert detect_language("ꨀꨁ")["language"] == "cjm"
+    assert detect_language("សួស្តី")["language"] == "khm"
     assert detect_language("Xin chào các bạn")["language"] == "vi"
     assert detect_language("Hello")["language"] == "en"
     assert detect_language("kơdih")["language"] == "und"
@@ -118,7 +125,7 @@ def test_glossary_hit_has_no_machine_warning():
 def test_nllb_engine_offers_only_trained_languages(tmp_path: Path):
     from app.nllb import METADATA, NllbEngine
 
-    base = {("vi", "en"), ("en", "vi")}
+    base = {("vi", "en"), ("en", "vi"), ("vi", "khm"), ("khm", "vi")}
     (tmp_path / METADATA).write_text('{"languages": ["tyz"]}', encoding="utf-8")
     assert NllbEngine("unused-base", str(tmp_path)).pairs() == base
     engine = NllbEngine("unused-base", str(tmp_path), gated=False)

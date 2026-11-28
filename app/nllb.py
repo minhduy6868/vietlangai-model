@@ -13,13 +13,15 @@ _PARA_BREAK = re.compile(r"\n\s*\n+")
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
 
-BASE_TAGS = {"vi": "vie_Latn", "en": "eng_Latn"}
+BASE_TAGS = {"vi": "vie_Latn", "en": "eng_Latn", "khm": "khm_Khmr"}
 NEW_TAGS = {
     "tyz": "tyz_Latn",
     "rad": "rad_Latn",
     "jra": "jra_Latn",
     "cjm": "cjm_Latn",
     "hmn": "hmn_Latn",
+    "bdq": "bdq_Latn",
+    "mtq": "mtq_Latn",
 }
 # Embedding rows averaged to start each new tag. Acehnese is the only Chamic
 # language in NLLB-200; Tày borrows Vietnamese spelling and its Tai relatives.
@@ -29,6 +31,8 @@ INIT_FROM = {
     "jra_Latn": ("ace_Latn", "ind_Latn"),
     "cjm_Latn": ("ace_Latn", "zsm_Latn"),
     "hmn_Latn": ("vie_Latn", "eng_Latn"),
+    "bdq_Latn": ("khm_Khmr", "vie_Latn"),
+    "mtq_Latn": ("vie_Latn",),
 }
 __all__ = [
     "BASE_TAGS",
@@ -52,10 +56,13 @@ def init_new_tag_embeddings(model, tokenizer) -> list[int]:
     """Initialize new ethnic language tag rows from related NLLB language embeddings."""
     import torch
 
+    vocab = tokenizer.get_vocab()
     weight = model.get_input_embeddings().weight
     ids: list[int] = []
     with torch.no_grad():
         for tag, sources in INIT_FROM.items():
+            if tag not in vocab:
+                continue
             tag_id = tokenizer.convert_tokens_to_ids(tag)
             source_ids = [tokenizer.convert_tokens_to_ids(s) for s in sources]
             weight[tag_id] = weight[source_ids].float().mean(dim=0).to(weight.dtype)
@@ -124,7 +131,7 @@ class NllbEngine:
         self._lock = threading.Lock()
 
     def pairs(self) -> set[tuple[str, str]]:
-        pairs = {("vi", "en"), ("en", "vi")}
+        pairs = {("vi", "en"), ("en", "vi"), ("vi", "khm"), ("khm", "vi")}
         for code in self.languages:
             for direction in ((code, "vi"), ("vi", code)):
                 if not self.gated or self.passed(*direction):

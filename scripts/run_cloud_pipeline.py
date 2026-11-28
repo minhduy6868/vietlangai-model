@@ -26,6 +26,21 @@ SMOKE_SAMPLES = [
         "rad",
         "Hôm nay buôn làng tổ chức lễ hội đầu mùa rất vui vẻ. Mọi người mặc trang phục truyền thống và cùng nhau đánh chiêng đón khách quý.",
     ),
+    (
+        "vi",
+        "bdq",
+        "Hôm nay trời mát mẻ, bà con cùng nhau lên rẫy thu hoạch mùa màng.",
+    ),
+    (
+        "vi",
+        "mtq",
+        "Chúc mọi người buổi sáng vui vẻ và công việc thuận lợi.",
+    ),
+    (
+        "vi",
+        "jra",
+        "Chúng tôi cùng nhau giữ gìn tiếng nói và văn hóa của buôn làng.",
+    ),
 ]
 
 
