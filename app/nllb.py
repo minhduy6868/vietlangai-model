@@ -196,15 +196,19 @@ class NllbEngine:
                 max_length=MAX_TOKENS,
             ).to(model.device)
             forced = tokenizer.convert_tokens_to_ids(tag_for(target))
-            budget = min(MAX_TOKENS, max(32, int(2.2 * inputs["input_ids"].shape[1]) + 24))
+            input_len = inputs["input_ids"].shape[1]
+            if input_len <= 12:
+                budget = min(MAX_TOKENS, max(24, int(2.0 * input_len) + 16))
+            else:
+                budget = min(MAX_TOKENS, max(32, int(2.2 * input_len) + 24))
             kwargs = {
                 "forced_bos_token_id": forced,
                 "num_beams": self.beams,
                 "max_new_tokens": budget,
-                "length_penalty": 1.0 if inputs["input_ids"].shape[1] <= 12 else 1.05,
+                "length_penalty": 1.0 if input_len <= 12 else 1.05,
                 "no_repeat_ngram_size": 3,
                 "repetition_penalty": 1.1,
-                "early_stopping": True,
+                "early_stopping": self.beams > 1,
             }
             with torch.inference_mode():
                 if self._is_peft and self.step_name(source, target) == "nllb":

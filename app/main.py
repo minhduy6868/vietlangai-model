@@ -1,4 +1,6 @@
+import os
 import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -11,7 +13,6 @@ from app.translate import RouteNotReady, Translator, UnknownLanguage, build_tran
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
-app = FastAPI(title="Ngon Sac Viet ML", version="0.1.0")
 _translator: Translator | None = None
 _translator_lock = threading.Lock()
 
@@ -22,6 +23,23 @@ def translator() -> Translator:
         if _translator is None:
             _translator = build_translator()
     return _translator
+
+
+def _prewarm_translator() -> None:
+    tr = translator()
+    neural = getattr(tr, "neural", None)
+    if neural is not None and hasattr(neural, "_load"):
+        neural._load()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if os.getenv("ML_PREWARM") == "1" and os.getenv("ML_MT_ENGINE") in ("nllb", "mt5"):
+        threading.Thread(target=_prewarm_translator, daemon=True, name="ml-prewarm").start()
+    yield
+
+
+app = FastAPI(title="Ngon Sac Viet ML", version="0.1.0", lifespan=lifespan)
 
 
 class TranslateIn(BaseModel):

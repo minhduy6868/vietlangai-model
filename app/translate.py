@@ -274,9 +274,11 @@ def build_translator() -> Translator:
     if kind == "mt5":
         neural = NeuralEngine(os.getenv("ML_MT_MODEL") or "google/mt5-small")
     elif kind == "nllb":
+        beams = max(1, int(os.getenv("ML_NLLB_BEAMS", "4")))
         neural = NllbEngine(
             os.getenv("ML_MT_MODEL") or default_nllb_base(),
             _adapter_ready(os.getenv("ML_MT_ADAPTER") or None),
+            beams=beams,
         )
     elif kind != "glossary":
         raise ValueError(f"Unknown ML_MT_ENGINE: {kind}")
